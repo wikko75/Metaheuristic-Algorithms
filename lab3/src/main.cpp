@@ -8,6 +8,7 @@
 #include <cmath>
 #include <random> // for std::mt19937
 #include <chrono> // for std::chrono
+#include <optional>
 
 
 
@@ -376,7 +377,6 @@ std::vector<Vertex> permutateVertices(std::vector<Vertex>& vertices, std::mt1993
 
     // Use a different seed for better randomness
     std::mt19937 gen(mt());
-    
     // Rearrange the elements in the vector to create permutations
     for (int i = static_cast<int>(permutation.size()) - 1; i >= 1; --i) {
         int j = randomVertex(gen, std::uniform_int_distribution<int>::param_type(0, i));  // Generating a random index directly from the distribution
@@ -448,24 +448,21 @@ void saveCycle(const std::string& path, const std::vector<int>& cycle)
 
 struct ExperimentData
 {
-    int MST{};
-    int bestLSCycleWeight{};
-    int avgLSCycleWeight{};
-    int avgNoOfInverts{};
+    const char* label;
+    int bestCycleWeight{};
+    int avgCycleWeight{};
 };
         
 
-void saveExperimentData(const std::string& path, const ExperimentData& data)
+void saveExperimentData(const std::filesystem::path& path, const ExperimentData& data)
 {   
     std::ofstream outStream{};
     outStream.open(path, std::ios::out);
 
     if(outStream.is_open())
     {
-        outStream << "MST: " << data.MST << "\n";
-        outStream << "Best LS cycle weight: " << data.bestLSCycleWeight << "\n";
-        outStream << "Average LS cycle weight: " << data.avgLSCycleWeight << "\n";
-        outStream << "Average number of inverts: " << data.avgNoOfInverts<< "\n";
+        outStream << "Best " + std::string(data.label) + " cycle weight: " << data.bestCycleWeight << "\n";
+        outStream << "Average " + std::string(data.label) + " cycle weight: " << data.avgCycleWeight << "\n";
     }
     else
     {
@@ -477,6 +474,126 @@ void saveExperimentData(const std::string& path, const ExperimentData& data)
 }
 
 
+
+void invert(std::vector<int>& cycle, int i, int j)
+{
+    i <= j ? std::reverse(cycle.begin() + i, cycle.begin() + j + 1)
+           : std::reverse(cycle.begin() + j, cycle.begin() + i + 1);
+
+}
+
+
+
+int weightDiff(const std::vector<Vertex> &vertices, std::vector<int>& cycle, int startIdx, int stopIdx)
+{
+
+    if (startIdx > stopIdx)
+    {
+        int temp {startIdx};
+        startIdx = stopIdx;
+        stopIdx = temp;
+    }
+    
+    //no change at all
+    if (startIdx == 0 && stopIdx == vertices.size() - 1)
+    {
+        return 0;
+    }
+
+    //edges: [start --- (stop+1)] and [stop --- lastVertex] are changed
+    if (startIdx == 0)
+    { 
+        //add weight between [start --- lastVertex] and [stop --- (stop + 1)]  (initial state)
+        int initialCycle = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[cycle.size() - 1] - 1])
+                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[stopIdx + 1] - 1]);
+
+        //add weight between [start --- (stop + 1)] and [stop --- lastVertex]   (state after inversion)
+        int newCycleChange = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[stopIdx + 1] - 1])
+                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[cycle.size() - 1] - 1]);
+        
+        return initialCycle - newCycleChange;
+    }
+
+    //edges: [(start - 1) --- start] and [stop --- firstVertex] are changed
+    if(stopIdx == vertices.size() - 1)
+    {
+         //add weight between [(start - 1) --- start] and [stop --- firstVertex]  (initial state)
+        int initialCycle = euclideanNorm(vertices[cycle[startIdx - 1] - 1], vertices[cycle[startIdx] - 1])
+                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[0] - 1]);
+
+        //add weight between [start --- firstVertex] and [stop --- (start - 1)]   (state after inversion)
+        int newCycleChange = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[0] - 1])
+                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[startIdx - 1] - 1]);
+        
+        return initialCycle - newCycleChange;
+    }
+
+    //add weight between [(start - 1) --- start]  and [stop --- (stop + 1)]  (initial state)
+    int initialCycle = euclideanNorm(vertices[cycle[startIdx - 1] - 1], vertices[cycle[startIdx] - 1])
+                        +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[stopIdx + 1] - 1]);
+
+    //add weight between [(start) --- (stop + 1)] and [stop --- (start - 1)]   (state after inversion)
+    int newCycleChange = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[stopIdx + 1] - 1])
+                        +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[startIdx - 1] - 1]);    
+
+    return initialCycle - newCycleChange;
+}
+
+
+void localAnnealing(const std::vector<Vertex>& verticies, std::vector<int>& cycle, float T, float deltaT, int epoch, int samples)
+{
+
+    std::mt19937 mt{ static_cast<std::mt19937::result_type>(
+    std::chrono::steady_clock::now().time_since_epoch().count()
+    )};
+
+    std::uniform_int_distribution randomVertex { 1, static_cast<int>(verticies.size())};
+    std::uniform_real_distribution<float> uniformRandomFloat {0.0, 1.0};
+
+    int i {};
+    int j {};
+    int temp {};
+    float randomFloat {};
+    int deltaWeight {};
+
+    while (T > 0.0 && epoch > 0)
+    {
+        for(int sampleCounter {0};  sampleCounter < samples; ++sampleCounter)
+        {
+            i = randomVertex(mt);
+            do
+            {
+                j = randomVertex(mt);
+            }
+            while (i == j);
+            
+            //something broken here
+            deltaWeight = weightDiff(verticies, cycle, i - 1, j - 1);
+
+            if (deltaWeight > 0)
+            {
+               invert(cycle, i - 1, j - 1);
+            }
+
+            else
+            {
+                randomFloat = uniformRandomFloat(mt);
+
+                if(randomFloat < exp(deltaWeight / T))
+                {
+                    invert(cycle, i - 1, j - 1);
+                }
+            }
+        }
+
+        T *= deltaT;
+        --epoch;
+    }    
+}
+
+
+
+
 struct InvertWeightDiff
 {
     int cost{};
@@ -486,8 +603,16 @@ struct InvertWeightDiff
 
 //possible change -- instead of providing std::vector<Vertex> &vertices, std::vector<int>& cycle, just provide std::vector<Vertex>
 //and use calculatePermutationCycle
-InvertWeightDiff weightDiff(const std::vector<Vertex> &vertices, std::vector<int>& cycle, int startIdx, int stopIdx)
+InvertWeightDiff tabuWeightDiff(const std::vector<Vertex> &vertices, const std::vector<int>& cycle, int startIdx, int stopIdx)
 {
+
+    if (startIdx > stopIdx)
+    {
+        int temp {startIdx};
+        startIdx = stopIdx;
+        stopIdx = temp;
+    }
+
     //no change at all
     if (startIdx == 0 && stopIdx == vertices.size() - 1)
     {
@@ -534,56 +659,119 @@ InvertWeightDiff weightDiff(const std::vector<Vertex> &vertices, std::vector<int
 }
 
 
-void invert(std::vector<int>& cycle, int i, int j)
+
+/// @brief Computes invert indexes (i and j) of neighbors of cycle. Neighbor in form of std::pair<int, int> having indexes i and j which are used for computing inverse
+/// @param cycle initial cycle which neighbors are being computed of 
+/// @param verticies vector of Vertex objects containing data regarding verticies 
+/// @param neighborsListCapacity number of neightbors that are computed
+/// @return indices i and j that form inverse of cycle. Sorted in worse to best order.
+std::vector<std::pair<int, int>> generateNeighbors(
+    const std::vector<int>& cycle,
+    const std::vector<Vertex>& verticies,
+    int neighborsListCapacity
+    )
 {
-    std::reverse(cycle.begin() + i, cycle.begin() + j + 1);
+    std::mt19937 mt{ static_cast<std::mt19937::result_type>(
+    std::chrono::steady_clock::now().time_since_epoch().count()
+    )};
+
+    std::uniform_int_distribution randomVertexIndex { 0, static_cast<int>(verticies.size()) - 1};
+
+    int i {};
+    int j {};
+    InvertWeightDiff maxDiff { 0, -1, -1};
+    std::vector<std::pair<int, int>> neighborsInvertIndices{};
+
+    for (int k {0}; k < neighborsListCapacity; ++k)
+    {
+        i = randomVertexIndex(mt);
+        do
+        {
+            j = randomVertexIndex(mt);
+        } while (i == j);
+
+
+        InvertWeightDiff diff { tabuWeightDiff(verticies, cycle, i, j) };
+
+        if (diff.cost > maxDiff.cost)
+        {
+            maxDiff = diff;
+            neighborsInvertIndices.emplace_back(maxDiff.i, maxDiff.j);
+        }
+    }
+
+    return neighborsInvertIndices;
 }
 
 
-struct LocalSearchResult
+std::optional<std::vector<int>> findBestNeighbor(
+    std::vector<int> initialCycle,
+    const std::vector<Vertex>& verticies,
+    std::vector<std::pair<int, int>>& neighbors,
+    std::vector<std::vector<int>>& tabuList
+    )
+{
+    while (neighbors.size() != 0)
+    {
+        std::vector<int> cycle {initialCycle};
+        auto [i, j] {neighbors.back()};
+        invert(cycle, i, j);
+
+        auto it = std::find_if(tabuList.begin(), tabuList.end(), [&cycle](const std::vector<int>& tabu)
+        {
+            return std::equal(tabu.begin(), tabu.end(), cycle.begin(), cycle.end());
+        });
+
+
+        if ( it == tabuList.end() || tabuList.size() == 0)
+        {
+            return cycle;
+        }
+
+        neighbors.pop_back();
+    }
+    //all in tabu - return nothing
+    return {};
+}
+
+
+struct TabuSearchResult
 {
     std::vector<int> cycle;
     int cost;
-    int noOfInverts;
 };
 
 //can do better - work all the time on initial vector and dont return copy of it, just cycle cost
 //another improvement -- instead of passing vertices and cycle, pass cycle in form of vector<Vertex>
 //and use calculateCycle that takes vector<Vertex> as an argument
-LocalSearchResult localSearch(const std::vector<Vertex> &vertices, std::vector<int>& initialCycle)
+TabuSearchResult tabuSearch(const std::vector<Vertex> &verticies, std::vector<int>& initialCycle,
+                             int tabuListCapacity, int maxRepeats, int neighborsListCapacity)
 {
     std::vector<int> currentOptimalCycle { initialCycle };
-    int currentOptimalCycleCost { calculateCycle(vertices, currentOptimalCycle) };
-    bool canImprove { true };
-    int noOfInverts {};
+    int repeats {};
 
-    while (canImprove)
+    std::vector<std::vector<int>> tabuList{};
+    tabuList.reserve(tabuListCapacity);
+
+    while (tabuList.size() < tabuListCapacity && repeats < maxRepeats)
     {      
-        InvertWeightDiff maxDiff { 0, -1, -1};
+        std::vector<std::pair<int, int>> neighbors {generateNeighbors(currentOptimalCycle, verticies, neighborsListCapacity)};
+        auto bestNeighbor {findBestNeighbor(currentOptimalCycle, verticies, neighbors, tabuList)};
 
-        for (int i{0}; i < initialCycle.size() - 1; ++i)
+        //no bestNeightbor found (all in tabu list)
+        if (!bestNeighbor.has_value())
         {
-            for (int j{i + 1}; j < initialCycle.size(); ++j)
-            {                
-                InvertWeightDiff diff { weightDiff(vertices, currentOptimalCycle, i, j) };
-                if (diff.cost > maxDiff.cost)
-                {
-                    maxDiff = diff;
-                }
-            }
+            ++repeats;
         }
-
-        if (maxDiff.cost <= 0)
+        else
         {
-            return { currentOptimalCycle, currentOptimalCycleCost, noOfInverts };
+            currentOptimalCycle = bestNeighbor.value();
+            tabuList.emplace_back(bestNeighbor.value());
+            repeats = 0;
         }
-
-        invert(currentOptimalCycle, maxDiff.i, maxDiff.j);
-        ++noOfInverts;
-        currentOptimalCycleCost -= maxDiff.cost;
     }
 
-    return { currentOptimalCycle, currentOptimalCycleCost, noOfInverts };
+    return { currentOptimalCycle, calculateCycle(verticies, currentOptimalCycle) };
 }
 
 
@@ -591,8 +779,13 @@ int main() {
     //path to files containing vertices data in format (no. of vertex, x coor, y coor)
     const std::filesystem::path pathToVerticesData {std::filesystem::current_path().append("res/verticesData")};
 
+    // Seed our Mersenne Twister using steady_clock
+    std::mt19937 mt { static_cast<std::mt19937::result_type>(
+        std::chrono::steady_clock::now().time_since_epoch().count()
+        )};
+
     {
-        Timer outer {"Verticies >= 1000"};
+        Timer outer {"Verticies < 1000"};
 
 
         for (auto &verticesDataFile : std::filesystem::directory_iterator(pathToVerticesData))
@@ -602,48 +795,78 @@ int main() {
 
             //populate vertices with data
             getGraphDataFromFile(verticesDataFile.path(), vertices);
-            std::unique_ptr<Graph> graph { createCompleteGraph(vertices) };
+            
+            std::vector<int> cycle{};
+            cycle.reserve(vertices.size());
 
-            //Create MST 
-            //-------------------------------
-            const int MST { graph->kruskalMST() };
-           
-            std::cout << "MST = " << MST  << "\n";
+            for (int i {1}; i < vertices.size() + 1; ++i)
+            {
+                cycle.push_back(i);
+            }
+            
+            //------ SIMULATED ANNEALING -----//
 
-            //Save MST edges data
-            //-------------------------------
-            std::string pathToMSTEdges {std::filesystem::current_path().append("res/MSTEdges/")};
-            pathToMSTEdges.append(verticesDataFile.path().filename().string());
-            saveMST(pathToMSTEdges, *graph);
+             constexpr int iterations {100};
+             int avgWeight {};
+             int min {10000000};
 
-
-            // Seed our Mersenne Twister using steady_clock
-            std::mt19937 mt{ static_cast<std::mt19937::result_type>(
-                std::chrono::steady_clock::now().time_since_epoch().count()
-                )};
-
-            // Create a reusable random number generator that generates random vertices from graph 
-            std::uniform_int_distribution randomVertex{ 1, static_cast<int>(vertices.size()) - 1 };
-
-
-              //Perform DFS
-            //-------------------------------
-             std::vector<bool> visited(vertices.size(), false);
-             std::vector<int> cycle{};
-             cycle.reserve(vertices.size());
-
+             for (int i {0}; i < iterations; ++i)
+             {
                 
-            DFS(randomVertex(mt), *graph, graph->getMSTEdges(), visited, cycle);
-            int cycleWeight = calculateCycle(vertices, cycle);
-            std::cout << "Cycle weight for DFS: " << cycleWeight << "\n";
+                 std::shuffle(cycle.begin(), cycle.end(), mt);
 
-            //Save DFS Cycle
-            //-------------------------------
-            std::string pathToDFSCycleEdges {std::filesystem::current_path().append("res/DFSCycleEdges/")};
-            pathToDFSCycleEdges.append(verticesDataFile.path().filename().string());
-            saveCycle(pathToDFSCycleEdges, cycle);
-            return 0;
+                //Local annealing 
+                localAnnealing(vertices, cycle, 100, 0.85f, 4000, 2500);
 
+                int SAWeight {calculateCycle(vertices, cycle)};
+                std::cout << "Cycle weight for local annealing: " << SAWeight << "\n";
+
+                if (SAWeight < min)
+                {
+                    min = SAWeight;
+                }
+                
+                avgWeight += SAWeight;
+            }
+
+            ExperimentData data{ "SA", min, avgWeight / iterations};
+
+            std::filesystem::path path {std::filesystem::current_path().append("res/SimulatedAnnealingData")};
+            path.append("SA_DATA_" + verticesDataFile.path().filename().string());
+
+            std::cout << path << "\n";
+            saveExperimentData(path, data);
+            
+            
+            //---------------------------//
+
+            //--------TABU SEARCH--------//
+
+            avgWeight = 0;
+            min = 1000000; 
+            for (int  i {0}; i < iterations; ++i)
+            {
+                std::shuffle(cycle.begin(), cycle.end(), mt);
+                TabuSearchResult TS {tabuSearch(vertices, cycle, pow(vertices.size(), 2), vertices.size(), 100)};
+
+                if (TS.cost < min)
+                {
+                    min = TS.cost;
+                }
+
+                avgWeight += TS.cost;
+            }
+
+            ExperimentData TSdata {"TS", min, avgWeight / iterations};
+
+            std::filesystem::path path {std::filesystem::current_path().append("res/TabuSearchData")};
+            path.append("TS_DATA_" + verticesDataFile.path().filename().string());
+
+            std::cout << "Tabu Search cost (best): " << TSdata.bestCycleWeight << "\n";
+            std::cout << "Tabu Search cost (avg): " << TSdata.avgCycleWeight << "\n";
+
+            saveExperimentData(path, TSdata);
+            
         }
     }
 
