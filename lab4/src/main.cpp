@@ -9,6 +9,7 @@
 #include <random> // for std::mt19937
 #include <chrono> // for std::chrono
 #include <optional>
+#include <fmt/core.h>
 
 
 
@@ -530,19 +531,21 @@ int main() {
     {
         for (auto &verticesDataFile : std::filesystem::directory_iterator(pathToVerticesData))
         {       
-            std::cout << verticesDataFile.path() << "\n";
-            std::vector<Vertex> vertices {};
-
-            //populate vertices with data
-            getGraphDataFromFile(verticesDataFile.path(), vertices);
+            // std::cout << verticesDataFile.path() << "\n";
+            fmt::print("Path: {}\n", verticesDataFile.path().string());
             
-            std::vector<int> cycle{};
-            cycle.reserve(vertices.size());
+            // std::vector<Vertex> vertices {};
 
-            for (int i {1}; i < vertices.size() + 1; ++i)
-            {
-                cycle.push_back(i);
-            }
+            // //populate vertices with data
+            // getGraphDataFromFile(verticesDataFile.path(), vertices);
+            
+            // std::vector<int> cycle{};
+            // cycle.reserve(vertices.size());
+
+            // for (int i {1}; i < vertices.size() + 1; ++i)
+            // {
+            //     cycle.push_back(i);
+            // }
         }
     }
 
