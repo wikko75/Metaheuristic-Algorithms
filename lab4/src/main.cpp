@@ -3,11 +3,12 @@
 #include <algorithm>
 #include <memory>
 #include <fstream>
-#include<sstream>
+#include <sstream>
 #include <filesystem>
 #include <cmath>
 #include <random> // for std::mt19937
 #include <optional>
+#include <limits>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 
@@ -340,46 +341,6 @@ int calculateCycle(const std::vector<Vertex>& verticies, const std::vector<int>&
 }
 
 
-int calculatePermutationCycle(const std::vector<Vertex>& permutation)
-{
-    int cycleWeight {};
-
-    //add all weights between first and last element in cycle
-    for(int index{0}; index < permutation.size() - 1;  ++index)
-    {
-        cycleWeight += euclideanNorm(permutation[index], permutation[index + 1]);
-    }
-
-    //add weight between last and first element in cycle (cause we have to come back, since it's a cycle)
-    cycleWeight += euclideanNorm(permutation[permutation.size() - 1], permutation[0]);
-
-    return cycleWeight;
-}
-
-
-//I don't like this function//
-/// @brief Permutates provided verticies using random generators
-/// @param verticies vector of Vertex objects based on which permutation will be done
-/// @param mt random generator
-/// @param randomVertex uniform number generator that generates random verticies from graph  
-/// @return vector of Vertex objects after permutation
-std::vector<Vertex> permutateverticies(std::vector<Vertex>& verticies, std::mt19937& mt, std::uniform_int_distribution<int>& randomVertex) {
-    std::vector<Vertex> permutation = verticies;  // Creating a copy to generate permutations
-
-    // Use a different seed for better randomness
-    std::mt19937 gen(mt());
-    // Rearrange the elements in the vector to create permutations
-    for (int i = static_cast<int>(permutation.size()) - 1; i >= 1; --i) {
-        int j = randomVertex(gen, std::uniform_int_distribution<int>::param_type(0, i));  // Generating a random index directly from the distribution
-
-        // Swap elements to create a permutation
-        std::swap(permutation[i], permutation[j]);
-    }
-
-    return permutation;
-}
-
-
 /// @brief Saves cycle edges to provided file
 /// @param path path to file, if file does not exist it will be created
 /// @param cycle vector storing verticies' numbers that form cycle
@@ -513,21 +474,59 @@ std::vector<std::vector<int>> createPopulation(std::vector<int>& cycle, int popu
         std::shuffle(cycle.begin(), cycle.end(), mt);
         population.emplace_back(cycle);
     }
-
+    //prob. not neccessary, compiler's gonna perform optimalization
     return std::move(population);
 }
 
 
+int evaluatePopulation(const std::vector<std::vector<int>>& population, const std::vector<Vertex> verticies)
+{
+    int minCost {std::numeric_limits<int>::max()};
+    int specimenCost {};
+
+    for (const auto& specimen : population)
+    {
+        specimenCost = calculateCycle(verticies, specimen);
+
+        fmt::print("Specimen cost: {}\n", specimenCost);
+        if (specimenCost < minCost)
+        {
+            minCost = specimenCost;
+        }
+    }
+
+    fmt::print("MinCost: {}\n", minCost);
+    return minCost;
+}
+
+
+std::vector<int> getBestSpecimenFromPopulation(const std::vector<Vertex>& verticies,  std::vector<std::vector<int>>& population)
+{
+    std::sort(population.begin(), population.end(), [&verticies](const auto& specimen1, const auto& specimen2)
+    {
+        return calculateCycle(verticies, specimen1) < calculateCycle(verticies, specimen2);
+    });
+
+    return population[0];
+}
+
+std::vector<std::vector<int>> getPopulationSample(std::vector<std::vector<int>>& population, const int sampleSize, std::mt19937& mt)
+{
+    std::shuffle(population.begin(), population.end(), mt);
+
+    return {population.begin(), population.begin() + sampleSize};
+}
+
 std::vector<std::pair<std::vector<int>, std::vector<int>>> chooseParents(
     std::vector<std::vector<int>>& population,
     const std::vector<Vertex>& verticies,
-    std::mt19937 mt,
-    int noOfPairs,
-    int range)
+    const int noOfPairs,
+    const int sampleSize,
+    std::mt19937& mt)
 {
-    if (range <= 0 || range > population.size())
+    if (sampleSize <= 0 || sampleSize > population.size())
     {
-        fmt::print("Can't choose parents. Wrong range [{}] specified! Population size: {}\n", range, population.size());
+        fmt::print("Can't choose parents. Wrong sampleSize [{}] specified! Population size: {}\n", sampleSize, population.size());
     }
 
     if (noOfPairs <= 0 || noOfPairs > population.size() / 2)
@@ -540,17 +539,13 @@ std::vector<std::pair<std::vector<int>, std::vector<int>>> chooseParents(
 
     for (int i{0}; i < noOfPairs; ++i)
     {
-        //get range of random specimens of population 
-        std::shuffle(population.begin(), population.end(), mt);
-        std::vector<std::vector<int>> populationSample {population.begin(), population.begin() + range};
+        //get random smaple of specimens of population 
+        std::vector<std::vector<int>> populationSample {getPopulationSample(population, sampleSize, mt)};
         
-        //get best specimen from populationSample - that's our parent
-        std::sort(populationSample.begin(), populationSample.end(), [&verticies](const auto& specimen1, const auto& specimen2)
-        {
-            return calculateCycle(verticies, specimen1) < calculateCycle(verticies, specimen2);
-        });
-
-        std::vector<int> firstParent {populationSample[0]};
+        //get best specimen from population sample - it's our parent
+        std::vector<int> firstParent {getBestSpecimenFromPopulation(verticies, populationSample)};
+        
+        
         std::vector<int> secondParent {};
         secondParent.reserve(verticies.size());
 
@@ -558,16 +553,8 @@ std::vector<std::pair<std::vector<int>, std::vector<int>>> chooseParents(
         //ensure both parenst are unique
         do
         {
-            //get range of random specimens of population  
-            std::shuffle(population.begin(), population.end(), mt);
-            std::vector<std::vector<int>> populationSample {population.begin(), population.begin() + range};
-            
-            //get the best specimen from populationSample - that's our parent
-            std::sort(populationSample.begin(), populationSample.end(), [&verticies](const auto& specimen1, const auto& specimen2)
-            {
-                return calculateCycle(verticies, specimen1) < calculateCycle(verticies, specimen2);
-            });
-            secondParent = populationSample[0];
+            std::vector<std::vector<int>> populationSample {getPopulationSample(population, sampleSize, mt)};
+            secondParent = getBestSpecimenFromPopulation(verticies, populationSample);
         } while (std::equal(firstParent.begin(), firstParent.end(), secondParent.begin(), secondParent.end()));
 
         setOfParents.emplace_back(std::make_pair(firstParent, secondParent));   
@@ -577,9 +564,25 @@ std::vector<std::pair<std::vector<int>, std::vector<int>>> chooseParents(
 }
 
 
-void crossover()
+void crossover(std::vector<std::pair<std::vector<int>, std::vector<int>>>& setOfParents, int populationSize)
 {
-    //TODO
+    int noOfPairs {setOfParents.size()};
+    int childrenPerPair {static_cast<int>(std::ceil(populationSize / noOfPairs))};
+    
+    //children of parents set
+    std::vector<std::vector<int>> newGeneration {};
+    newGeneration.reserve(noOfPairs * childrenPerPair);
+
+    for (const auto [parent1, parent2] : setOfParents)
+    {
+        for (int i {0}; i < childrenPerPair; ++i)
+        {
+            //TODO crossover
+        }
+    }
+
+
+    //TODO delete random specimens from newGeneration so that population size stayes the same
 }
 
 
@@ -618,12 +621,10 @@ int main() {
 
             std::vector<std::vector<int>> population {createPopulation(cycle, 100, mt)};
 
-            auto setOfParents {chooseParents(population, verticies, mt, 5, 10)};
+            fmt::print("Evaluating population...\nCost: {}\n\n", evaluatePopulation(population, verticies));
+            auto setOfParents {chooseParents(population, verticies, 10, 40, mt)};
 
-            for (const auto [firstParent, secondParent] : setOfParents)
-            {
-                fmt::print("Parents:\n{}\n{}\nCost: {}\n\n", firstParent, secondParent, calculateCycle(verticies, secondParent));
-            }
+
         }
     }
 
