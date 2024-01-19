@@ -7,9 +7,9 @@
 #include <filesystem>
 #include <cmath>
 #include <random> // for std::mt19937
-#include <chrono> // for std::chrono
 #include <optional>
 #include <fmt/core.h>
+#include <fmt/ranges.h>
 
 
 
@@ -72,12 +72,8 @@ private:
     int weight;
     
 public:
-    Edge(int src, int dest, int weight) 
-    {
-        this->src = src;
-        this->dest = dest;
-        this->weight = weight;
-    }
+    Edge(int src, int dest, int weight)
+        : src{src}, dest{dest}, weight{weight} {}
 
 public:
     int getSrc() const { return src;}
@@ -122,7 +118,7 @@ public:
 
         for (int i = 1; i < n + 1; ++i)
         {
-            // Initially, all vertices are in 
+            // Initially, all verticies are in 
             // different sets and have rank 0.
             rank.emplace_back(0);
             //every element is parent of itself 
@@ -166,6 +162,11 @@ public:
 
 class Graph
 {
+private:
+    int V;
+    std::vector<Edge> graphEdges;
+    std::vector<Edge> MSTEdges;
+
 public:
     Graph(int V) : V{V}, graphEdges{}, MSTEdges{}
     {
@@ -221,15 +222,10 @@ public:
     {
         return MSTEdges;
     }
-
-private:
-    int V;
-    std::vector<Edge> graphEdges;
-    std::vector<Edge> MSTEdges;
 };
 
 
-void getGraphDataFromFile(const std::filesystem::path& filePath, std::vector<Vertex>& vertices, int startLine = 9)
+void getGraphDataFromFile(const std::filesystem::path& filePath, std::vector<Vertex>& verticies, int startLine = 9)
 {
     std::fstream fileStream{};
     fileStream.open(filePath, std::ios::in);
@@ -263,7 +259,7 @@ void getGraphDataFromFile(const std::filesystem::path& filePath, std::vector<Ver
 
             if (strStream >> vertexNumber >> x >> y)
             {
-                vertices.emplace_back(vertexNumber, x, y);
+                verticies.emplace_back(vertexNumber, x, y);
             }
             else
             {
@@ -285,17 +281,17 @@ int euclideanNorm(const Vertex &v1, const Vertex &v2) {
 }
 
 
-std::unique_ptr<Graph> createCompleteGraph(std::vector<Vertex>& vertices)
+std::unique_ptr<Graph> createCompleteGraph(std::vector<Vertex>& verticies)
 {
-    std::unique_ptr<Graph> graph = std::make_unique<Graph>(vertices.size());
+    std::unique_ptr<Graph> graph = std::make_unique<Graph>(verticies.size());
     
     //construct complete graph with weight as Euclidian norm
-    for (int i{0}; i < vertices.size() - 1; ++i)
+    for (int i{0}; i < verticies.size() - 1; ++i)
     {
-        Vertex vertex1 = vertices[i];
-        for (int j{i + 1}; j < vertices.size(); ++j)
+        Vertex vertex1 = verticies[i];
+        for (int j{i + 1}; j < verticies.size(); ++j)
         {
-            Vertex vertex2 = vertices[j];
+            Vertex vertex2 = verticies[j];
             int weight = euclideanNorm(vertex1, vertex2);
 
             //add edge between vertex1 and vertex2 with proper weight 
@@ -304,8 +300,8 @@ std::unique_ptr<Graph> createCompleteGraph(std::vector<Vertex>& vertices)
             // std::cout <<"Weight = " <<  weight << "\n";
         }
     }
-    //std::move
-    return graph;
+
+    return std::move(graph);
 }
 
 
@@ -327,21 +323,18 @@ void DFS(int v, const Graph& graph, const std::vector<Edge>& MSTEdges, std::vect
 }
 
 
-int calculateCycle(const std::vector<Vertex>& vertices, const std::vector<int>& cycle)
+int calculateCycle(const std::vector<Vertex>& verticies, const std::vector<int>& cycle)
 {
     int cycleWeight {};
 
     //add all weights between first and last element in cycle
     for(int index{0}; index < cycle.size() - 1;  ++index)
     {
-        // std::cout << "Calculating norm between: [ " << cycle[index] << ", " << cycle[index + 1] << " ]\n";
-        cycleWeight += euclideanNorm(vertices[cycle[index] - 1], vertices[cycle[index + 1] - 1]);
+        cycleWeight += euclideanNorm(verticies[cycle[index] - 1], verticies[cycle[index + 1] - 1]);
     }
 
     //add weight between last and first element in cycle (cause we have to come back, since it's a cycle)
-    // std::cout << "Calculating norm between: [ " << cycle[cycle.size() - 1] << ", " << cycle[0] << " ]\n";
-
-    cycleWeight += euclideanNorm(vertices[cycle[0] - 1], vertices[cycle[cycle.size() - 1] - 1]);
+    cycleWeight += euclideanNorm(verticies[cycle[0] - 1], verticies[cycle[cycle.size() - 1] - 1]);
 
     return cycleWeight;
 }
@@ -354,13 +347,10 @@ int calculatePermutationCycle(const std::vector<Vertex>& permutation)
     //add all weights between first and last element in cycle
     for(int index{0}; index < permutation.size() - 1;  ++index)
     {
-        // std::cout << "Calculating norm between: [ " << permutation[index].getNumber() << ", " << permutation[index + 1].getNumber() << " ]\n";
         cycleWeight += euclideanNorm(permutation[index], permutation[index + 1]);
     }
 
     //add weight between last and first element in cycle (cause we have to come back, since it's a cycle)
-    // std::cout << "Calculating norm between: [ " << permutation[permutation.size() - 1].getNumber() << ", " << permutation[0].getNumber() << " ]\n";
-
     cycleWeight += euclideanNorm(permutation[permutation.size() - 1], permutation[0]);
 
     return cycleWeight;
@@ -368,13 +358,13 @@ int calculatePermutationCycle(const std::vector<Vertex>& permutation)
 
 
 //I don't like this function//
-/// @brief Permutates provided vertices using random generators
-/// @param vertices vector of Vertex objects based on which permutation will be done
+/// @brief Permutates provided verticies using random generators
+/// @param verticies vector of Vertex objects based on which permutation will be done
 /// @param mt random generator
-/// @param randomVertex uniform number generator that generates random vertices from graph  
+/// @param randomVertex uniform number generator that generates random verticies from graph  
 /// @return vector of Vertex objects after permutation
-std::vector<Vertex> permutateVertices(std::vector<Vertex>& vertices, std::mt19937& mt, std::uniform_int_distribution<int>& randomVertex) {
-    std::vector<Vertex> permutation = vertices;  // Creating a copy to generate permutations
+std::vector<Vertex> permutateverticies(std::vector<Vertex>& verticies, std::mt19937& mt, std::uniform_int_distribution<int>& randomVertex) {
+    std::vector<Vertex> permutation = verticies;  // Creating a copy to generate permutations
 
     // Use a different seed for better randomness
     std::mt19937 gen(mt());
@@ -390,10 +380,9 @@ std::vector<Vertex> permutateVertices(std::vector<Vertex>& vertices, std::mt1993
 }
 
 
-
 /// @brief Saves cycle edges to provided file
-/// @param path path to file, if file does not exists it will be created
-/// @param cycle vector storing vertices' numbers that form cycle
+/// @param path path to file, if file does not exist it will be created
+/// @param cycle vector storing verticies' numbers that form cycle
 void saveCycle(const std::string& path, const std::vector<int>& cycle)
 {
     std::ofstream fstream {};
@@ -420,7 +409,6 @@ void saveCycle(const std::string& path, const std::vector<int>& cycle)
 
     fstream.close();
 }
-
 
 
 struct ExperimentData
@@ -451,7 +439,6 @@ void saveExperimentData(const std::filesystem::path& path, const ExperimentData&
 }
 
 
-
 void invert(std::vector<int>& cycle, int i, int j)
 {
     i <= j ? std::reverse(cycle.begin() + i, cycle.begin() + j + 1)
@@ -460,8 +447,7 @@ void invert(std::vector<int>& cycle, int i, int j)
 }
 
 
-
-int weightDiff(const std::vector<Vertex> &vertices, std::vector<int>& cycle, int startIdx, int stopIdx)
+int weightDiff(const std::vector<Vertex> &verticies, std::vector<int>& cycle, int startIdx, int stopIdx)
 {
 
     if (startIdx > stopIdx)
@@ -472,7 +458,7 @@ int weightDiff(const std::vector<Vertex> &vertices, std::vector<int>& cycle, int
     }
     
     //no change at all
-    if (startIdx == 0 && stopIdx == vertices.size() - 1)
+    if (startIdx == 0 && stopIdx == verticies.size() - 1)
     {
         return 0;
     }
@@ -481,71 +467,163 @@ int weightDiff(const std::vector<Vertex> &vertices, std::vector<int>& cycle, int
     if (startIdx == 0)
     { 
         //add weight between [start --- lastVertex] and [stop --- (stop + 1)]  (initial state)
-        int initialCycle = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[cycle.size() - 1] - 1])
-                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[stopIdx + 1] - 1]);
+        int initialCycle = euclideanNorm(verticies[cycle[startIdx] - 1], verticies[cycle[cycle.size() - 1] - 1])
+                            +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[stopIdx + 1] - 1]);
 
         //add weight between [start --- (stop + 1)] and [stop --- lastVertex]   (state after inversion)
-        int newCycleChange = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[stopIdx + 1] - 1])
-                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[cycle.size() - 1] - 1]);
+        int newCycleChange = euclideanNorm(verticies[cycle[startIdx] - 1], verticies[cycle[stopIdx + 1] - 1])
+                            +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[cycle.size() - 1] - 1]);
         
         return initialCycle - newCycleChange;
     }
 
     //edges: [(start - 1) --- start] and [stop --- firstVertex] are changed
-    if(stopIdx == vertices.size() - 1)
+    if(stopIdx == verticies.size() - 1)
     {
          //add weight between [(start - 1) --- start] and [stop --- firstVertex]  (initial state)
-        int initialCycle = euclideanNorm(vertices[cycle[startIdx - 1] - 1], vertices[cycle[startIdx] - 1])
-                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[0] - 1]);
+        int initialCycle = euclideanNorm(verticies[cycle[startIdx - 1] - 1], verticies[cycle[startIdx] - 1])
+                            +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[0] - 1]);
 
         //add weight between [start --- firstVertex] and [stop --- (start - 1)]   (state after inversion)
-        int newCycleChange = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[0] - 1])
-                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[startIdx - 1] - 1]);
+        int newCycleChange = euclideanNorm(verticies[cycle[startIdx] - 1], verticies[cycle[0] - 1])
+                            +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[startIdx - 1] - 1]);
         
         return initialCycle - newCycleChange;
     }
 
     //add weight between [(start - 1) --- start]  and [stop --- (stop + 1)]  (initial state)
-    int initialCycle = euclideanNorm(vertices[cycle[startIdx - 1] - 1], vertices[cycle[startIdx] - 1])
-                        +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[stopIdx + 1] - 1]);
+    int initialCycle = euclideanNorm(verticies[cycle[startIdx - 1] - 1], verticies[cycle[startIdx] - 1])
+                        +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[stopIdx + 1] - 1]);
 
     //add weight between [(start) --- (stop + 1)] and [stop --- (start - 1)]   (state after inversion)
-    int newCycleChange = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[stopIdx + 1] - 1])
-                        +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[startIdx - 1] - 1]);    
+    int newCycleChange = euclideanNorm(verticies[cycle[startIdx] - 1], verticies[cycle[stopIdx + 1] - 1])
+                        +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[startIdx - 1] - 1]);    
 
     return initialCycle - newCycleChange;
 }
 
 
+std::vector<std::vector<int>> createPopulation(std::vector<int>& cycle, int populationSize, std::mt19937& mt)
+{
+    std::vector<std::vector<int>> population {};
+    population.reserve(populationSize);
+
+    for (int i {0}; i < populationSize; ++i)
+    {
+        std::shuffle(cycle.begin(), cycle.end(), mt);
+        population.emplace_back(cycle);
+    }
+
+    return std::move(population);
+}
+
+
+std::vector<std::pair<std::vector<int>, std::vector<int>>> chooseParents(
+    std::vector<std::vector<int>>& population,
+    const std::vector<Vertex>& verticies,
+    std::mt19937 mt,
+    int noOfPairs,
+    int range)
+{
+    if (range <= 0 || range > population.size())
+    {
+        fmt::print("Can't choose parents. Wrong range [{}] specified! Population size: {}\n", range, population.size());
+    }
+
+    if (noOfPairs <= 0 || noOfPairs > population.size() / 2)
+    {
+        fmt::print("Can't choose parents. Wrong noOfPairs [{}] specified! Population size: {}\n", noOfPairs, population.size());
+    }
+    
+    std::vector<std::pair<std::vector<int>, std::vector<int>>> setOfParents {};
+    setOfParents.reserve(noOfPairs);
+
+    for (int i{0}; i < noOfPairs; ++i)
+    {
+        //get range of random specimens of population 
+        std::shuffle(population.begin(), population.end(), mt);
+        std::vector<std::vector<int>> populationSample {population.begin(), population.begin() + range};
+        
+        //get best specimen from populationSample - that's our parent
+        std::sort(populationSample.begin(), populationSample.end(), [&verticies](const auto& specimen1, const auto& specimen2)
+        {
+            return calculateCycle(verticies, specimen1) < calculateCycle(verticies, specimen2);
+        });
+
+        std::vector<int> firstParent {populationSample[0]};
+        std::vector<int> secondParent {};
+        secondParent.reserve(verticies.size());
+
+        //repeat for second parent
+        //ensure both parenst are unique
+        do
+        {
+            //get range of random specimens of population  
+            std::shuffle(population.begin(), population.end(), mt);
+            std::vector<std::vector<int>> populationSample {population.begin(), population.begin() + range};
+            
+            //get the best specimen from populationSample - that's our parent
+            std::sort(populationSample.begin(), populationSample.end(), [&verticies](const auto& specimen1, const auto& specimen2)
+            {
+                return calculateCycle(verticies, specimen1) < calculateCycle(verticies, specimen2);
+            });
+            secondParent = populationSample[0];
+        } while (std::equal(firstParent.begin(), firstParent.end(), secondParent.begin(), secondParent.end()));
+
+        setOfParents.emplace_back(std::make_pair(firstParent, secondParent));   
+    }
+
+    return setOfParents;
+}
+
+
+void crossover()
+{
+    //TODO
+}
+
+
+void mutation()
+{
+    //TODO
+}
+
 
 
 int main() {
-    //path to files containing vertices data in format (no. of vertex, x coor, y coor)
-    const std::filesystem::path pathToVerticesData {std::filesystem::current_path().append("res/verticesData")};
+    //path to files containing verticies data in format (vertex no., x coor, y coor)
+    const std::filesystem::path pathToverticiesData {std::filesystem::current_path().append("test/verticiesData")};
 
-    // Seed our Mersenne Twister using steady_clock
-    std::mt19937 mt { static_cast<std::mt19937::result_type>(
-        std::chrono::steady_clock::now().time_since_epoch().count()
-        )};
+    // random gen. used throughout program
+    std::mt19937 mt { std::random_device{}()};
 
     {
-        for (auto &verticesDataFile : std::filesystem::directory_iterator(pathToVerticesData))
+        for (auto &verticiesDataFile : std::filesystem::directory_iterator(pathToverticiesData))
         {       
-            // std::cout << verticesDataFile.path() << "\n";
-            fmt::print("Path: {}\n", verticesDataFile.path().string());
+            // std::cout << verticiesDataFile.path() << "\n";
+            fmt::print("Path: {}\n", verticiesDataFile.path().string());
             
-            // std::vector<Vertex> vertices {};
+            std::vector<Vertex> verticies {};
 
-            // //populate vertices with data
-            // getGraphDataFromFile(verticesDataFile.path(), vertices);
+            //populate verticies with data
+            getGraphDataFromFile(verticiesDataFile.path(), verticies);
             
-            // std::vector<int> cycle{};
-            // cycle.reserve(vertices.size());
+            std::vector<int> cycle{};
+            cycle.reserve(verticies.size());
 
-            // for (int i {1}; i < vertices.size() + 1; ++i)
-            // {
-            //     cycle.push_back(i);
-            // }
+            for (int i {1}; i < verticies.size() + 1; ++i)
+            {
+                cycle.push_back(i);
+            }
+
+            std::vector<std::vector<int>> population {createPopulation(cycle, 100, mt)};
+
+            auto setOfParents {chooseParents(population, verticies, mt, 5, 10)};
+
+            for (const auto [firstParent, secondParent] : setOfParents)
+            {
+                fmt::print("Parents:\n{}\n{}\nCost: {}\n\n", firstParent, secondParent, calculateCycle(verticies, secondParent));
+            }
         }
     }
 
