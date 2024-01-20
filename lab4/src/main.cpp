@@ -408,62 +408,6 @@ void invert(std::vector<int>& cycle, int i, int j)
 }
 
 
-int weightDiff(const std::vector<Vertex> &verticies, std::vector<int>& cycle, int startIdx, int stopIdx)
-{
-
-    if (startIdx > stopIdx)
-    {
-        int temp {startIdx};
-        startIdx = stopIdx;
-        stopIdx = temp;
-    }
-    
-    //no change at all
-    if (startIdx == 0 && stopIdx == verticies.size() - 1)
-    {
-        return 0;
-    }
-
-    //edges: [start --- (stop+1)] and [stop --- lastVertex] are changed
-    if (startIdx == 0)
-    { 
-        //add weight between [start --- lastVertex] and [stop --- (stop + 1)]  (initial state)
-        int initialCycle = euclideanNorm(verticies[cycle[startIdx] - 1], verticies[cycle[cycle.size() - 1] - 1])
-                            +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[stopIdx + 1] - 1]);
-
-        //add weight between [start --- (stop + 1)] and [stop --- lastVertex]   (state after inversion)
-        int newCycleChange = euclideanNorm(verticies[cycle[startIdx] - 1], verticies[cycle[stopIdx + 1] - 1])
-                            +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[cycle.size() - 1] - 1]);
-        
-        return initialCycle - newCycleChange;
-    }
-
-    //edges: [(start - 1) --- start] and [stop --- firstVertex] are changed
-    if(stopIdx == verticies.size() - 1)
-    {
-         //add weight between [(start - 1) --- start] and [stop --- firstVertex]  (initial state)
-        int initialCycle = euclideanNorm(verticies[cycle[startIdx - 1] - 1], verticies[cycle[startIdx] - 1])
-                            +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[0] - 1]);
-
-        //add weight between [start --- firstVertex] and [stop --- (start - 1)]   (state after inversion)
-        int newCycleChange = euclideanNorm(verticies[cycle[startIdx] - 1], verticies[cycle[0] - 1])
-                            +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[startIdx - 1] - 1]);
-        
-        return initialCycle - newCycleChange;
-    }
-
-    //add weight between [(start - 1) --- start]  and [stop --- (stop + 1)]  (initial state)
-    int initialCycle = euclideanNorm(verticies[cycle[startIdx - 1] - 1], verticies[cycle[startIdx] - 1])
-                        +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[stopIdx + 1] - 1]);
-
-    //add weight between [(start) --- (stop + 1)] and [stop --- (start - 1)]   (state after inversion)
-    int newCycleChange = euclideanNorm(verticies[cycle[startIdx] - 1], verticies[cycle[stopIdx + 1] - 1])
-                        +   euclideanNorm(verticies[cycle[stopIdx] - 1], verticies[cycle[startIdx - 1] - 1]);    
-
-    return initialCycle - newCycleChange;
-}
-
-
 std::vector<std::vector<int>> createPopulation(std::vector<int>& cycle, int populationSize, std::mt19937& mt)
 {
     std::vector<std::vector<int>> population {};
@@ -608,19 +552,18 @@ std::vector<int> breedChild(const std::vector<int>& parent1, const std::vector<i
 
 
 
-//?DONE Partially mapped crossover (inversion seq)
 std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, std::vector<int>>>& setOfParents, int populationSize, std::mt19937& mt)
 {
     int noOfPairs {static_cast<int>(setOfParents.size())};
-    int childrenPerPair {static_cast<int>(std::ceil(populationSize / noOfPairs))};
+    int childrenPerPair {static_cast<int>(std::ceil(populationSize / (float)noOfPairs))};
     int cycleLen {static_cast<int>(setOfParents[0].first.size())};
     
-    //children of parents set
-    std::vector<std::vector<int>> newGeneration {};
-    newGeneration.reserve(noOfPairs * childrenPerPair);
+    std::vector<std::vector<int>> nextGeneration {};
+    nextGeneration.reserve(noOfPairs * childrenPerPair);
 
     //verticies idx  count: 1...cycleLen
     std::uniform_int_distribution randomVertexIdx {0, cycleLen - 1};
+    std::uniform_real_distribution randomDouble {0.0, 1.0};
 
     //(startIdx to stopIdx) is taken from second parent
     //[0 to startIdx] and [stopIdx to end] is taken from first parent
@@ -628,14 +571,12 @@ std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, 
     int stopIdx {};
 
     for (const auto [parent1, parent2] : setOfParents)
-    {
-        
+    { 
         std::vector<int> sequenceMap {};
         sequenceMap.reserve(cycleLen + 1);
 
         for (int i {0}; i < childrenPerPair; ++i)
         {
-            //TODO crossover
             startIdx = randomVertexIdx(mt);
             do
             {
@@ -643,27 +584,69 @@ std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, 
             } while (
                 startIdx != stopIdx &&
                 abs(startIdx - stopIdx) < 2 &&             //abs(startIdx - stopIdx) < 2 because we want at least one vertex taken from second parent
-                abs(startIdx - stopIdx) == cycleLen - 1     //abs(startIdx - stopIdx) == cycleLen - 1 because we want at least one vertex taken from first parent
+                abs(startIdx - stopIdx) == cycleLen - 1    //abs(startIdx - stopIdx) == cycleLen - 1 because we want at least one vertex taken from first parent
             );
 
-            std::vector<int> firstChild {breedChild(parent1, parent2, startIdx, stopIdx)};
-            std::vector<int> secondChild {breedChild(parent2, parent1, startIdx, stopIdx)};
+            double transmissionProbability {randomDouble(mt)};
 
-            newGeneration.emplace_back(firstChild);
-            newGeneration.emplace_back(secondChild);
+            if (transmissionProbability <= 0.5)
+            {
+                std::vector<int> firstChild {breedChild(parent1, parent2, startIdx, stopIdx)};
+                nextGeneration.emplace_back(firstChild);
+            }
+            else
+            {
+                std::vector<int> secondChild {breedChild(parent2, parent1, startIdx, stopIdx)};
+                nextGeneration.emplace_back(secondChild);
+            }
         }
-
     }
 
-    //TODO delete random specimens from newGeneration so that population size stayes the same
+    //delete random specimens from nextGeneration so that population size stayes the same
+    while (nextGeneration.size() > populationSize)
+    {
+        //expensive
+        std::uniform_int_distribution randomNextGenerationIdx {0, static_cast<int>(nextGeneration.size()) - 1};
+        int idx {randomNextGenerationIdx(mt)};
+        double probOfDelete {randomDouble(mt)};
 
-    return newGeneration;
+        if (probOfDelete >= 0.51)
+        {
+            //expensive maybe std::list ?
+            nextGeneration.erase(nextGeneration.begin() + idx);
+        }
+    }
+
+    return nextGeneration;
 }
 
 
-void mutation()
+void mutatePopulation(std::vector<std::vector<int>>& population, const float probOfMutation, std::mt19937& mt)
 {
-    //TODO
+    const int cycleLen {static_cast<int>(population[0].size())};
+    std::uniform_real_distribution randomDouble {0.0, 1.0};
+    std::uniform_int_distribution randomIdx {0, cycleLen - 1};
+    float num {};
+    int i {};
+    int j {};
+
+    for (auto& specimen : population)
+    {
+        num = randomDouble(mt);
+        if (num > probOfMutation)
+        {
+            continue;
+        }
+
+        i = randomIdx(mt);
+
+        do
+        {
+            j = randomIdx(mt);
+        } while (i == j);
+
+        invert(specimen, i, j);
+    }
 }
 
 
@@ -678,7 +661,6 @@ int main() {
     {
         for (auto &verticiesDataFile : std::filesystem::directory_iterator(pathToverticiesData))
         {       
-            // std::cout << verticiesDataFile.path() << "\n";
             fmt::print("Path: {}\n", verticiesDataFile.path().string());
             
             std::vector<Vertex> verticies {};
@@ -697,11 +679,15 @@ int main() {
             std::vector<std::vector<int>> population {createPopulation(cycle, 100, mt)};
 
             fmt::print("Evaluating initial population...\nCost: {}\n\n", evaluatePopulation(population, verticies));
-            auto setOfParents {chooseParents(population, verticies, 10, 40, mt)};
+            auto setOfParents {chooseParents(population, verticies, 20, 60, mt)};
 
             fmt::print("Performing crossover...\n");
             std::vector<std::vector<int>> newPopulation = crossover(setOfParents, population.size(), mt);
             fmt::print("Evaluating population after crossover...\nCost: {}\n\n", evaluatePopulation(newPopulation, verticies));
+
+            fmt::print("Performing mutation...\n");
+            mutatePopulation(newPopulation, .15, mt);
+            fmt::print("Evaluating population after mutation...\nCost: {}\n\n", evaluatePopulation(newPopulation, verticies));
 
             fmt::print("New population size: {}\n", newPopulation.size());
         }
