@@ -488,14 +488,14 @@ int evaluatePopulation(const std::vector<std::vector<int>>& population, const st
     {
         specimenCost = calculateCycle(verticies, specimen);
 
-        fmt::print("Specimen cost: {}\n", specimenCost);
+        // fmt::print("Specimen cost: {}\n", specimenCost);
         if (specimenCost < minCost)
         {
             minCost = specimenCost;
         }
     }
 
-    fmt::print("MinCost: {}\n", minCost);
+    // fmt::print("MinCost: {}\n", minCost);
     return minCost;
 }
 
@@ -564,25 +564,100 @@ std::vector<std::pair<std::vector<int>, std::vector<int>>> chooseParents(
 }
 
 
-void crossover(std::vector<std::pair<std::vector<int>, std::vector<int>>>& setOfParents, int populationSize)
+std::vector<int> breedChild(const std::vector<int>& parent1, const std::vector<int>& parent2, const int startIdx, const int stopIdx)
 {
-    int noOfPairs {setOfParents.size()};
+    int cycleLen {static_cast<int>(parent1.size())};
+    std::vector<int> sequenceMap {};
+    sequenceMap.reserve(cycleLen + 1);
+
+    std::vector<int> child {};
+    child.reserve(cycleLen);
+
+
+    //copy parent1 cycle to child
+    std::copy(parent1.begin(), parent1.end(), std::back_inserter(child));
+
+
+    for (int i {0}; i < cycleLen; ++i)
+    {
+        //example: Vertex 4 is on index 5 in child cycle
+        //with permutation 1..n it simply states that vertex 1 is on index 0, vertex 2 is on index 1 and so on...
+        sequenceMap[child[i]] = i;  
+    }
+
+    //copy verticies from parent2 into child (taking map info into consideration)
+    for(int i {startIdx + 1}; i < stopIdx; ++i)
+    {
+        int vertex {parent2[i]};
+        int vertexIdxInMap = sequenceMap[vertex];
+        
+        //swap verticies 
+        child[vertexIdxInMap] = child[i];
+        child[i] = parent1[vertexIdxInMap];
+
+        //swap indicies
+        int temp = sequenceMap[child[vertexIdxInMap]];
+        sequenceMap[child[vertexIdxInMap]] = vertexIdxInMap;
+        sequenceMap[vertex] = temp; 
+    }
+
+    //fmt::print("Child created: {}\n", child);
+    
+    return child;
+}
+
+
+
+//?DONE Partially mapped crossover (inversion seq)
+std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, std::vector<int>>>& setOfParents, int populationSize, std::mt19937& mt)
+{
+    int noOfPairs {static_cast<int>(setOfParents.size())};
     int childrenPerPair {static_cast<int>(std::ceil(populationSize / noOfPairs))};
+    int cycleLen {static_cast<int>(setOfParents[0].first.size())};
     
     //children of parents set
     std::vector<std::vector<int>> newGeneration {};
     newGeneration.reserve(noOfPairs * childrenPerPair);
 
+    //verticies idx  count: 1...cycleLen
+    std::uniform_int_distribution randomVertexIdx {0, cycleLen - 1};
+
+    //(startIdx to stopIdx) is taken from second parent
+    //[0 to startIdx] and [stopIdx to end] is taken from first parent
+    int startIdx {};
+    int stopIdx {};
+
     for (const auto [parent1, parent2] : setOfParents)
     {
+        
+        std::vector<int> sequenceMap {};
+        sequenceMap.reserve(cycleLen + 1);
+
         for (int i {0}; i < childrenPerPair; ++i)
         {
             //TODO crossover
+            startIdx = randomVertexIdx(mt);
+            do
+            {
+                stopIdx = randomVertexIdx(mt);
+            } while (
+                startIdx != stopIdx &&
+                abs(startIdx - stopIdx) < 2 &&             //abs(startIdx - stopIdx) < 2 because we want at least one vertex taken from second parent
+                abs(startIdx - stopIdx) == cycleLen - 1     //abs(startIdx - stopIdx) == cycleLen - 1 because we want at least one vertex taken from first parent
+            );
+
+            std::vector<int> firstChild {breedChild(parent1, parent2, startIdx, stopIdx)};
+            std::vector<int> secondChild {breedChild(parent2, parent1, startIdx, stopIdx)};
+
+            newGeneration.emplace_back(firstChild);
+            newGeneration.emplace_back(secondChild);
         }
+
     }
 
-
     //TODO delete random specimens from newGeneration so that population size stayes the same
+
+    return newGeneration;
 }
 
 
@@ -621,10 +696,14 @@ int main() {
 
             std::vector<std::vector<int>> population {createPopulation(cycle, 100, mt)};
 
-            fmt::print("Evaluating population...\nCost: {}\n\n", evaluatePopulation(population, verticies));
+            fmt::print("Evaluating initial population...\nCost: {}\n\n", evaluatePopulation(population, verticies));
             auto setOfParents {chooseParents(population, verticies, 10, 40, mt)};
 
+            fmt::print("Performing crossover...\n");
+            std::vector<std::vector<int>> newPopulation = crossover(setOfParents, population.size(), mt);
+            fmt::print("Evaluating population after crossover...\nCost: {}\n\n", evaluatePopulation(newPopulation, verticies));
 
+            fmt::print("New population size: {}\n", newPopulation.size());
         }
     }
 
