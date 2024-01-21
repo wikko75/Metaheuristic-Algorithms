@@ -109,7 +109,7 @@ private:
     int n;
 
 public:
-    DisjoinSets(int V): n{V}, parent{}, rank{} 
+    DisjoinSets(int V) : parent{}, rank{}, n{V} 
     {
         //verticies count starts from 1 and goes up to n ex. n = 5,  {1,2,3,4,5}
         rank.reserve(n+1);
@@ -418,8 +418,7 @@ std::vector<std::vector<int>> createPopulation(std::vector<int>& cycle, int popu
         std::shuffle(cycle.begin(), cycle.end(), mt);
         population.emplace_back(cycle);
     }
-    //prob. not neccessary, compiler's gonna perform optimalization
-    return std::move(population);
+    return population;
 }
 
 
@@ -455,7 +454,7 @@ std::vector<int> getBestSpecimenFromPopulation(const std::vector<Vertex>& vertic
 }
 
 std::vector<std::vector<int>> getPopulationSample(std::vector<std::vector<int>>& population, const int sampleSize, std::mt19937& mt)
-{
+{    
     std::shuffle(population.begin(), population.end(), mt);
 
     return {population.begin(), population.begin() + sampleSize};
@@ -512,7 +511,7 @@ std::vector<int> breedChild(const std::vector<int>& parent1, const std::vector<i
 {
     int cycleLen {static_cast<int>(parent1.size())};
     std::vector<int> sequenceMap {};
-    sequenceMap.reserve(cycleLen + 1);
+    sequenceMap.resize(cycleLen);
 
     std::vector<int> child {};
     child.reserve(cycleLen);
@@ -521,35 +520,31 @@ std::vector<int> breedChild(const std::vector<int>& parent1, const std::vector<i
     //copy parent1 cycle to child
     std::copy(parent1.begin(), parent1.end(), std::back_inserter(child));
 
-
     for (int i {0}; i < cycleLen; ++i)
     {
-        //example: Vertex 4 is on index 5 in child cycle
-        //with permutation 1..n it simply states that vertex 1 is on index 0, vertex 2 is on index 1 and so on...
-        sequenceMap[child[i]] = i;  
+        //example: (Vertex 4) - 1 is on index 5 in child cycle    // -1 because we wanna idx of vertex 4. (again verticies are 1...n; indicies are 0,..,n-1)
+        //with permutation 1..n it simply states that (vertex 1) - 1 is on index 0, (vertex 2) - 1 is on index 1 and so on...
+        sequenceMap[child[i] - 1] = i;  
     }
 
     //copy verticies from parent2 into child (taking map info into consideration)
     for(int i {startIdx + 1}; i < stopIdx; ++i)
     {
         int vertex {parent2[i]};
-        int vertexIdxInMap = sequenceMap[vertex];
+        int vertexIdxInMap = sequenceMap[vertex - 1];
         
         //swap verticies 
         child[vertexIdxInMap] = child[i];
         child[i] = parent1[vertexIdxInMap];
 
         //swap indicies
-        int temp = sequenceMap[child[vertexIdxInMap]];
-        sequenceMap[child[vertexIdxInMap]] = vertexIdxInMap;
-        sequenceMap[vertex] = temp; 
+        int temp = sequenceMap[child[vertexIdxInMap] - 1];
+        sequenceMap[child[vertexIdxInMap] - 1] = vertexIdxInMap;
+        sequenceMap[vertex - 1] = temp; 
     }
-
-    //fmt::print("Child created: {}\n", child);
     
     return child;
 }
-
 
 
 std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, std::vector<int>>>& setOfParents, int populationSize, std::mt19937& mt)
@@ -570,7 +565,7 @@ std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, 
     int startIdx {};
     int stopIdx {};
 
-    for (const auto [parent1, parent2] : setOfParents)
+    for (const auto& [parent1, parent2] : setOfParents)
     { 
         std::vector<int> sequenceMap {};
         sequenceMap.reserve(cycleLen + 1);
@@ -582,7 +577,7 @@ std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, 
             {
                 stopIdx = randomVertexIdx(mt);
             } while (
-                startIdx != stopIdx &&
+                startIdx >= stopIdx &&
                 abs(startIdx - stopIdx) < 2 &&             //abs(startIdx - stopIdx) < 2 because we want at least one vertex taken from second parent
                 abs(startIdx - stopIdx) == cycleLen - 1    //abs(startIdx - stopIdx) == cycleLen - 1 because we want at least one vertex taken from first parent
             );
@@ -650,13 +645,50 @@ void mutatePopulation(std::vector<std::vector<int>>& population, const float pro
 }
 
 
+int geneticTSPSolver(
+    std::vector<int>& initialCycle, const int iterations,
+    const int populationSize, const int noOfPairs, const int sampleSize,
+    const float mutationProb, const std::vector<Vertex>& verticies, std::mt19937& mt)
+{
+
+    std::vector<std::vector<int>> population {createPopulation(initialCycle, populationSize, mt)};
+
+    int minCost {std::numeric_limits<int>::max()};
+    int currIter {0};
+    int currMinCost {evaluatePopulation(population, verticies)};
+    // fmt::print("Evaluating initial population...\nCost: {}\n\n", currMinCost);
+
+    while (currIter < iterations && currMinCost < minCost)
+    {
+        minCost = currMinCost;
+        auto setOfParents {chooseParents(population, verticies, noOfPairs, sampleSize, mt)};
+       
+        std::vector<std::vector<int>> nextGeneration {crossover(setOfParents, population.size(), mt)};
+        
+        //fmt::print("Performing crossover...\n");
+        currMinCost = evaluatePopulation(nextGeneration, verticies);
+        //fmt::print("Evaluating population after crossover...\nCost: {}\n", currMinCost);
+        
+        //fmt::print("Performing mutation...\n");
+        mutatePopulation(nextGeneration, mutationProb, mt);
+        currMinCost = evaluatePopulation(nextGeneration, verticies);
+        //fmt::print("Evaluating population after mutation...\nCost: {}\n\n", currMinCost);
+        
+        //fmt::print("New population size: {}\n", nextGeneration.size());
+
+        population = nextGeneration;
+        ++currIter;
+    }
+
+    return minCost;
+}
 
 int main() {
     //path to files containing verticies data in format (vertex no., x coor, y coor)
     const std::filesystem::path pathToverticiesData {std::filesystem::current_path().append("test/verticiesData")};
 
-    // random gen. used throughout program
-    std::mt19937 mt { std::random_device{}()};
+    //random gen. used throughout program
+    std::mt19937 mt {std::random_device{}()};
 
     {
         for (auto &verticiesDataFile : std::filesystem::directory_iterator(pathToverticiesData))
@@ -676,20 +708,35 @@ int main() {
                 cycle.push_back(i);
             }
 
-            std::vector<std::vector<int>> population {createPopulation(cycle, 100, mt)};
+            int minCost {std::numeric_limits<int>::max()};
+            int avgCost {};
+            int repeats {100};
+            for (int i {0}; i < repeats; ++i)
+            {
+                const int iter {100};
+                const int populationSize {50};
+                const int noOfPairs {10};
+                const int populationSample {20};
+                const float mutationProb {.20};
+                int currMinCost {geneticTSPSolver(cycle, iter, populationSize, noOfPairs, populationSample, mutationProb, verticies, mt)};
+                // fmt::print("Cost after {} iterations: {}\n", iter, currMinCost);
 
-            fmt::print("Evaluating initial population...\nCost: {}\n\n", evaluatePopulation(population, verticies));
-            auto setOfParents {chooseParents(population, verticies, 20, 60, mt)};
+                if (currMinCost < minCost)
+                {
+                    minCost = currMinCost;
+                }
 
-            fmt::print("Performing crossover...\n");
-            std::vector<std::vector<int>> newPopulation = crossover(setOfParents, population.size(), mt);
-            fmt::print("Evaluating population after crossover...\nCost: {}\n\n", evaluatePopulation(newPopulation, verticies));
+                avgCost += currMinCost;
+            }
 
-            fmt::print("Performing mutation...\n");
-            mutatePopulation(newPopulation, .15, mt);
-            fmt::print("Evaluating population after mutation...\nCost: {}\n\n", evaluatePopulation(newPopulation, verticies));
+            fmt::print("\nResults after {} repeats:\nMinimal cost: {}\nAvg. cost {}\n", repeats, minCost, avgCost/repeats);
 
-            fmt::print("New population size: {}\n", newPopulation.size());
+            const std::filesystem::path path {std::filesystem::current_path().append("res/results")
+                                            .append("GenTSP_DATA" + verticiesDataFile.path().filename().string())};
+
+            fmt::print("Save path: {}\n", path.string());
+            const ExperimentData data {"GenTSP", minCost, avgCost/repeats};
+            saveExperimentData(path, data);
         }
     }
 
