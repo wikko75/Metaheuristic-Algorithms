@@ -482,7 +482,7 @@ std::vector<std::pair<std::vector<int>, std::vector<int>>> chooseParents(
 
     for (int i{0}; i < noOfPairs; ++i)
     {
-        //get random smaple of specimens of population 
+        //get random sample of specimens of population 
         std::vector<std::vector<int>> populationSample {getPopulationSample(population, sampleSize, mt)};
         
         //get best specimen from population sample - it's our parent
@@ -547,7 +547,7 @@ std::vector<int> breedChild(const std::vector<int>& parent1, const std::vector<i
 }
 
 
-std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, std::vector<int>>>& setOfParents, int populationSize, std::mt19937& mt)
+std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, std::vector<int>>>& setOfParents, const int populationSize, std::mt19937& mt)
 {
     int noOfPairs {static_cast<int>(setOfParents.size())};
     int childrenPerPair {static_cast<int>(std::ceil(populationSize / (float)noOfPairs))};
@@ -597,21 +597,21 @@ std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, 
         }
     }
 
-    //delete random specimens from nextGeneration so that population size stayes the same
-    while (nextGeneration.size() > populationSize)
+    if (nextGeneration.size() == populationSize)
     {
-        //expensive
-        std::uniform_int_distribution randomNextGenerationIdx {0, static_cast<int>(nextGeneration.size()) - 1};
-        int idx {randomNextGenerationIdx(mt)};
-        double probOfDelete {randomDouble(mt)};
-
-        if (probOfDelete >= 0.51)
-        {
-            //expensive maybe std::list ?
-            nextGeneration.erase(nextGeneration.begin() + idx);
-        }
+        return nextGeneration;
     }
+    
+    //delete random specimens from nextGeneration so that population size stayes the same
+    const int offset {nextGeneration.size() - populationSize};
+    std::shuffle(nextGeneration.begin(), nextGeneration.end(), mt);
 
+    for (int i {0}; i < offset; ++i)
+    {
+        nextGeneration.erase(nextGeneration.begin() + i);
+        nextGeneration.shrink_to_fit();
+    }
+    
     return nextGeneration;
 }
 
@@ -672,7 +672,7 @@ int geneticTSPSolver(
         //fmt::print("Performing mutation...\n");
         mutatePopulation(nextGeneration, mutationProb, mt);
         currMinCost = evaluatePopulation(nextGeneration, verticies);
-        //fmt::print("Evaluating population after mutation...\nCost: {}\n\n", currMinCost);
+        fmt::print("Evaluating population after mutation...\nCost: {}\n\n", currMinCost);
         
         //fmt::print("New population size: {}\n", nextGeneration.size());
 
@@ -710,7 +710,7 @@ int main() {
 
             int minCost {std::numeric_limits<int>::max()};
             int avgCost {};
-            int repeats {100};
+            int repeats {1};
             for (int i {0}; i < repeats; ++i)
             {
                 const int iter {100};
