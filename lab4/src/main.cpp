@@ -404,7 +404,6 @@ void invert(std::vector<int>& cycle, int i, int j)
 {
     i <= j ? std::reverse(cycle.begin() + i, cycle.begin() + j + 1)
            : std::reverse(cycle.begin() + j, cycle.begin() + i + 1);
-
 }
 
 
@@ -453,6 +452,7 @@ std::vector<int> getBestSpecimenFromPopulation(const std::vector<Vertex>& vertic
     return population[0];
 }
 
+
 std::vector<std::vector<int>> getPopulationSample(std::vector<std::vector<int>>& population, const int sampleSize, std::mt19937& mt)
 {    
     std::shuffle(population.begin(), population.end(), mt);
@@ -484,7 +484,7 @@ std::vector<std::pair<std::vector<int>, std::vector<int>>> chooseParents(
     {
         //get random sample of specimens of population 
         std::vector<std::vector<int>> populationSample {getPopulationSample(population, sampleSize, mt)};
-        
+                
         //get best specimen from population sample - it's our parent
         std::vector<int> firstParent {getBestSpecimenFromPopulation(verticies, populationSample)};
         
@@ -500,7 +500,51 @@ std::vector<std::pair<std::vector<int>, std::vector<int>>> chooseParents(
             secondParent = getBestSpecimenFromPopulation(verticies, populationSample);
         } while (std::equal(firstParent.begin(), firstParent.end(), secondParent.begin(), secondParent.end()));
 
-        setOfParents.emplace_back(std::make_pair(firstParent, secondParent));   
+        setOfParents.emplace_back(std::make_pair(firstParent, secondParent));
+          
+        // fmt::print("Parents:\n{}\n\n{}\n------\n", firstParent, secondParent); 
+    }
+
+    return setOfParents;
+}
+
+
+/// @brief Randomly
+/// @param population 
+/// @param verticies 
+/// @param noOfPairs 
+/// @param mt 
+/// @return 
+std::vector<std::vector<int>> chooseParents(
+    std::vector<std::vector<int>>& population,
+    const int noOfPairs,
+    std::mt19937& mt)
+{
+    if (noOfPairs <= 0 || noOfPairs > population.size() / 2)
+    {
+        fmt::print("Can't choose parents. Wrong noOfPairs [{}] specified! Population size: {}\n", noOfPairs, population.size());
+    }
+    
+    std::vector<std::vector<int>> setOfParents {};
+    setOfParents.reserve(noOfPairs);
+
+    std::uniform_int_distribution randomIdx {0, static_cast<int>(population.size()) - 1};
+    int j {};
+    int k {};
+    for (int i{0}; i < noOfPairs; ++i)
+    {
+
+        j = randomIdx(mt);
+
+        do
+        {
+            k = randomIdx(mt);
+        } while (j == k);
+
+        setOfParents.emplace_back(population[j]);
+        setOfParents.emplace_back(population[k]);
+
+        // fmt::print("Parents:\n{}\n\n{}\n------\n", population[j], population[k]); 
     }
 
     return setOfParents;
@@ -547,6 +591,28 @@ std::vector<int> breedChild(const std::vector<int>& parent1, const std::vector<i
 }
 
 
+std::vector<int> breedChild(const std::vector<int>& parent1, const std::vector<int>& parent2, const int crossingPoint)
+{
+    int cycleLen {static_cast<int>(parent1.size())};
+    std::vector<int> child {};
+    child.reserve(cycleLen);
+
+    //copy parent1 cycle to child
+    std::copy(parent1.begin(), parent1.end(), std::back_inserter(child));
+
+    for (int i {0}; i < crossingPoint; ++i)
+    {
+        auto it {std::find(child.begin(), child.end(), parent2[i])};
+
+        child[it - child.begin()] = child[i];
+        child[i] = parent2[i];
+    }
+    
+    // fmt::print("Child created:\n {}", child);
+    return child;
+}
+
+
 std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, std::vector<int>>>& setOfParents, const int populationSize, std::mt19937& mt)
 {
     int noOfPairs {static_cast<int>(setOfParents.size())};
@@ -577,22 +643,29 @@ std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, 
             {
                 stopIdx = randomVertexIdx(mt);
             } while (
-                startIdx >= stopIdx &&
-                abs(startIdx - stopIdx) < 2 &&             //abs(startIdx - stopIdx) < 2 because we want at least one vertex taken from second parent
-                abs(startIdx - stopIdx) == cycleLen - 1    //abs(startIdx - stopIdx) == cycleLen - 1 because we want at least one vertex taken from first parent
+                abs(startIdx - stopIdx) <= 2              //abs(startIdx - stopIdx) < 2 because we want at least one vertex taken from second parent
             );
 
+            if (startIdx > stopIdx)
+            {
+                int temp {startIdx};
+                startIdx = stopIdx;
+                stopIdx = temp;
+            }
+            
             double transmissionProbability {randomDouble(mt)};
-
-            if (transmissionProbability <= 0.5)
+            // fmt::print("startIdx: {}, stopIdx: {}\n", startIdx, stopIdx);
+            if (transmissionProbability < 0.5)
             {
                 std::vector<int> firstChild {breedChild(parent1, parent2, startIdx, stopIdx)};
                 nextGeneration.emplace_back(firstChild);
+                // fmt::print("Child:\n{}\n", firstChild);
             }
             else
             {
                 std::vector<int> secondChild {breedChild(parent2, parent1, startIdx, stopIdx)};
                 nextGeneration.emplace_back(secondChild);
+                // fmt::print("Child:\n{}\n", secondChild);
             }
         }
     }
@@ -609,10 +682,62 @@ std::vector<std::vector<int>> crossover(std::vector<std::pair<std::vector<int>, 
     for (int i {0}; i < offset; ++i)
     {
         nextGeneration.erase(nextGeneration.begin() + i);
-        nextGeneration.shrink_to_fit();
     }
     
+    nextGeneration.shrink_to_fit();
+
     return nextGeneration;
+}
+
+
+void crossoverV2(std::vector<std::vector<int>>& population, const std::vector<std::vector<int>>& setOfParents, std::mt19937& mt, const std::vector<Vertex>& verticies)
+{
+    int noOfPairs {static_cast<int>(setOfParents.size() / 2)};
+    int cycleLen {static_cast<int>(setOfParents[0].size())};
+    const int initialPopulationSize {population.size()};
+    
+    //verticies idx  count: 1...cycleLen
+    std::uniform_int_distribution randomVertexIdx {1, cycleLen - 2};
+    std::uniform_real_distribution randomDouble {0.0, 1.0};
+
+    //[0 to crossingIdx] is taken from first second parent
+    int crossingIdx {};
+
+    for (int i {0}; i < setOfParents.size() - 1; ++i)
+    { 
+
+        for (int j {1}; j < setOfParents.size(); ++j)
+        {
+            crossingIdx = randomVertexIdx(mt);
+            
+            // fmt::print("crossingIdx: {}\n", crossingIdx);
+            
+            std::vector<int> firstChild {breedChild(setOfParents[i], setOfParents[j], crossingIdx)};
+            population.emplace_back(firstChild);
+            // fmt::print("Child:\n{}\n", firstChild);
+            
+            std::vector<int> secondChild {breedChild(setOfParents[j], setOfParents[i], crossingIdx)};
+            population.emplace_back(secondChild);
+            // fmt::print("Child:\n{}\n", secondChild);
+        }
+    }
+
+
+    
+    //delete worse specimens from nextGeneration so that population size stayes the same
+    const int offset {population.size() - initialPopulationSize};
+    std::shuffle(population.begin(), population.end(), mt);
+    std::sort(population.begin(), population.end(), [&verticies](const auto& specimen1, const auto specimen2)
+    {
+        return calculateCycle(verticies, specimen1) < calculateCycle(verticies, specimen2);
+    });
+
+    for (int i {0}; i < offset; ++i)
+    {
+        population.pop_back();
+    }
+    // fmt::print("Population size after crossover: {}\n", population.size());
+    population.shrink_to_fit();
 }
 
 
@@ -627,7 +752,7 @@ void mutatePopulation(std::vector<std::vector<int>>& population, const float pro
 
     for (auto& specimen : population)
     {
-        num = randomDouble(mt);
+        num = static_cast<float>(randomDouble(mt));
         if (num > probOfMutation)
         {
             continue;
@@ -646,7 +771,7 @@ void mutatePopulation(std::vector<std::vector<int>>& population, const float pro
 
 
 int geneticTSPSolver(
-    std::vector<int>& initialCycle, const int iterations,
+    std::vector<int>& initialCycle, const int iterations, const int maxIterWithoutImprov,
     const int populationSize, const int noOfPairs, const int sampleSize,
     const float mutationProb, const std::vector<Vertex>& verticies, std::mt19937& mt)
 {
@@ -655,30 +780,44 @@ int geneticTSPSolver(
 
     int minCost {std::numeric_limits<int>::max()};
     int currIter {0};
+    int currIterWithoutImprov {0};
     int currMinCost {evaluatePopulation(population, verticies)};
     // fmt::print("Evaluating initial population...\nCost: {}\n\n", currMinCost);
 
-    while (currIter < iterations && currMinCost < minCost)
+    while (currIter < iterations && currIterWithoutImprov < maxIterWithoutImprov)
     {
         minCost = currMinCost;
-        auto setOfParents {chooseParents(population, verticies, noOfPairs, sampleSize, mt)};
+        // auto setOfParents {chooseParents(population, verticies, noOfPairs, sampleSize, mt)};
+        std::vector<std::vector<int>> setOfParents {chooseParents(population, noOfPairs, mt)};
        
-        std::vector<std::vector<int>> nextGeneration {crossover(setOfParents, population.size(), mt)};
-        
+        // std::vector<std::vector<int>> nextGeneration {crossover(setOfParents, population.size(), mt)};
+        // std::vector<std::vector<int>> nextGeneration {crossoverV2(setOfParents, population.size(), mt)};
+        crossoverV2(population, setOfParents, mt, verticies);
         //fmt::print("Performing crossover...\n");
-        currMinCost = evaluatePopulation(nextGeneration, verticies);
-        //fmt::print("Evaluating population after crossover...\nCost: {}\n", currMinCost);
+        currMinCost = evaluatePopulation(population, verticies);
+        // fmt::print("Evaluating population after crossover...\nCost: {}\n", currMinCost);
         
         //fmt::print("Performing mutation...\n");
-        mutatePopulation(nextGeneration, mutationProb, mt);
-        currMinCost = evaluatePopulation(nextGeneration, verticies);
-        fmt::print("Evaluating population after mutation...\nCost: {}\n\n", currMinCost);
+        mutatePopulation(population, mutationProb, mt);
+        currMinCost = evaluatePopulation(population, verticies);
+        // fmt::print("Evaluating population after mutation...\nCost: {}\n\n", currMinCost);
         
         //fmt::print("New population size: {}\n", nextGeneration.size());
 
-        population = nextGeneration;
+        if (currMinCost == minCost)
+        {
+            ++currIterWithoutImprov;
+        }
+        else
+        {
+            currIterWithoutImprov = 0;
+        }
+        
+        // population = nextGeneration;
         ++currIter;
     }
+
+    fmt::print("Performed: {} iterations\n\n", currIter);
 
     return minCost;
 }
@@ -710,15 +849,21 @@ int main() {
 
             int minCost {std::numeric_limits<int>::max()};
             int avgCost {};
-            int repeats {1};
+            int repeats {10};
             for (int i {0}; i < repeats; ++i)
             {
-                const int iter {100};
-                const int populationSize {50};
+                const int iter {300};
+                const int populationSize {30};
                 const int noOfPairs {10};
                 const int populationSample {20};
-                const float mutationProb {.20};
-                int currMinCost {geneticTSPSolver(cycle, iter, populationSize, noOfPairs, populationSample, mutationProb, verticies, mt)};
+                const float mutationProb {.3};
+                const int maxIterWithoutImprov {30};
+                // const int iter {100};
+                // const int populationSize {50};
+                // const int noOfPairs {10};
+                // const int populationSample {20};
+                // const float mutationProb {.20};
+                int currMinCost {geneticTSPSolver(cycle, iter, maxIterWithoutImprov, populationSize, noOfPairs, populationSample, mutationProb, verticies, mt)};
                 // fmt::print("Cost after {} iterations: {}\n", iter, currMinCost);
 
                 if (currMinCost < minCost)
@@ -731,7 +876,7 @@ int main() {
 
             fmt::print("\nResults after {} repeats:\nMinimal cost: {}\nAvg. cost {}\n", repeats, minCost, avgCost/repeats);
 
-            const std::filesystem::path path {std::filesystem::current_path().append("res/results")
+            const std::filesystem::path path {std::filesystem::current_path().append("res/resultsV2")
                                             .append("GenTSP_DATA" + verticiesDataFile.path().filename().string())};
 
             fmt::print("Save path: {}\n", path.string());
@@ -742,3 +887,9 @@ int main() {
 
     return 0;
 }
+
+
+
+/*//TODO problemen jest chyba parenSet !!! trzeba zmienic koncepcje. Generujemy 
+
+*/
