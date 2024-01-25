@@ -7,7 +7,6 @@
 #include <filesystem>
 #include <cmath>
 #include <random> // for std::mt19937
-#include <optional>
 #include <limits>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -431,14 +430,12 @@ int evaluatePopulation(const std::vector<std::vector<int>>& population, const st
     {
         specimenCost = calculateCycle(verticies, specimen);
 
-        // fmt::print("Specimen cost: {}\n", specimenCost);
         if (specimenCost < minCost)
         {
             minCost = specimenCost;
         }
     }
 
-    // fmt::print("MinCost: {}\n", minCost);
     return minCost;
 }
 
@@ -462,7 +459,6 @@ std::vector<std::vector<int>> getPopulationSample(std::vector<std::vector<int>>&
 }
 
 
-
 /// @brief Selects specimens from population. Each specimen is chosen as best specimen from random sample of population. 
 /// @param population initial population parents are chosen from
 /// @param verticies data of verticies each specimen of population is built upon
@@ -480,11 +476,13 @@ std::vector<std::vector<int>> chooseParents(
     if (sampleSize <= 0 || sampleSize > population.size())
     {
         fmt::print("Can't choose parents. Wrong sampleSize [{}] specified! Population size: {}\n", sampleSize, population.size());
+        return {};
     }
 
     if (noOfPairs <= 0 || noOfPairs > population.size() / 2)
     {
         fmt::print("Can't choose parents. Wrong noOfPairs [{}] specified! Population size: {}\n", noOfPairs, population.size());
+        return {};
     }
     
     std::vector<std::vector<int>> setOfParents {};
@@ -531,6 +529,7 @@ std::vector<std::vector<int>> chooseParents(
     if (noOfPairs <= 0 || noOfPairs > population.size() / 2)
     {
         fmt::print("Can't choose parents. Wrong noOfPairs [{}] specified! Population size: {}\n", noOfPairs, population.size());
+        return {};
     }
     
     std::vector<std::vector<int>> setOfParents {};
@@ -552,7 +551,6 @@ std::vector<std::vector<int>> chooseParents(
         setOfParents.emplace_back(population[j]);
         setOfParents.emplace_back(population[k]);
 
-        // fmt::print("Parents:\n{}\n\n{}\n------\n", population[j], population[k]); 
     }
 
     return setOfParents;
@@ -589,7 +587,7 @@ std::vector<int> breedChild(const std::vector<int>& parent1, const std::vector<i
 
 /// @brief Creates child from parents.
 /// @param parent1 first element from pair
-/// @param parent2 second element form pair 
+/// @param parent2 second element from pair 
 /// @param crossingPoint parent2 contributes range: [0, crossingPoint -1] of its genes
 /// @return std::vector<int> representing child
 std::vector<int> breedChild(const std::vector<int>& parent1, const std::vector<int>& parent2, const int crossingPoint)
@@ -609,7 +607,6 @@ std::vector<int> breedChild(const std::vector<int>& parent1, const std::vector<i
         child[i] = parent2[i];
     }
     
-    // fmt::print("Child created:\n {}", child);
     return child;
 }
 
@@ -727,7 +724,6 @@ void onePointCrossover(std::vector<std::vector<int>>& population,
         {
             crossingIdx = randomVertexIdx(mt);
             
-            // fmt::print("crossingIdx: {}\n", crossingIdx);
             double transmissionProbability {randomDouble(mt)};
             if (transmissionProbability <= 0.5)
             {
@@ -765,6 +761,10 @@ void onePointCrossover(std::vector<std::vector<int>>& population,
 }
 
 
+/// @brief Mutates population by performing 2-OPT invert
+/// @param population target of mutation
+/// @param probOfMutation probability of mutation of specimen in population; range [0.0, 1.0].
+/// @param mt random numbers generator
 void mutatePopulation(std::vector<std::vector<int>>& population, const float probOfMutation, std::mt19937& mt)
 {
     const int cycleLen {static_cast<int>(population[0].size())};
@@ -794,13 +794,44 @@ void mutatePopulation(std::vector<std::vector<int>>& population, const float pro
 }
 
 
+/// @brief Genetic algorithm solving TSP.
+/// 
+/// Algorithm details:
+/// - Crossover procedure: Two-point crossover with use of partially-mapped crossover (PMX).
+/// - Parents selection: Tournament - best specimen from random sample of population.
+/// - After each crossover the worst part of population is rejected, so that population size stayes the same
+/// 
+/// @param initialCycle cycle algorithm starts optimization from.
+/// @param iterations number of iterations (generations).
+/// @param maxIterWithoutImprov safety guard preventing from finishing optimization too early.
+/// @param populationSize size of population algorithm operates on (if high, significantly increases computation time).
+/// @param noOfPairs number of pairs of parents (each pair breeds children).
+/// @param sampleSize size of population parents are selected from during 'parents selection process'.
+/// @param mutationProb probability of mutation for each specimen in population. Should be in range [0.0, 1.0].
+/// @param verticies data of vertices each specimen of population is built upon.
+/// @param mt random numbers generator.
+/// @return Minimal cost of cycle.
 int geneticTSPSolver(
     std::vector<int>& initialCycle, const int iterations, const int maxIterWithoutImprov,
     const int populationSize, const int noOfPairs, const int sampleSize,
     const float mutationProb, const std::vector<Vertex>& verticies, std::mt19937& mt)
 {
 
+    if (noOfPairs <= 0 || noOfPairs > populationSize / 2)
+    {
+        fmt::print("Wrong noOfPairs [{}] specified! Population size: {}\n", noOfPairs, populationSize);
+        return -1;
+    }
+
+    if (sampleSize <= 0 || sampleSize > populationSize)
+    {
+        fmt::print("Wrong sampleSize [{}] specified! Population size: {}\n", sampleSize, populationSize);
+        return -1;
+    }
+
     std::vector<std::vector<int>> population {createPopulation(initialCycle, populationSize, mt)};
+    std::vector<std::vector<int>> setOfParents {};
+    setOfParents.reserve(noOfPairs * 2);
 
     int minCost {std::numeric_limits<int>::max()};
     int currIter {0};
@@ -808,11 +839,84 @@ int geneticTSPSolver(
     int currMinCost {evaluatePopulation(population, verticies)};
     fmt::print("Evaluating initial population...\nCost: {}\n\n", currMinCost);
 
+
     while (currIter < iterations && currIterWithoutImprov < maxIterWithoutImprov)
     {
         minCost = currMinCost;
 
-        std::vector<std::vector<int>> setOfParents {chooseParents(population, noOfPairs, mt)};
+        setOfParents = chooseParents(population, verticies, noOfPairs, sampleSize, mt);
+
+        twoPointCrossover(population, setOfParents, verticies, mt);
+
+        mutatePopulation(population, mutationProb, mt);
+
+        currMinCost = evaluatePopulation(population, verticies);
+        fmt::print("Evaluating population after mutation...\nCost: {}\n\n", currMinCost);
+        
+        if (currMinCost == minCost)
+        {
+            ++currIterWithoutImprov;
+        }
+        else
+        {
+            currIterWithoutImprov = 0;
+        }
+        
+        ++currIter;
+    }
+
+    fmt::print("Performed: {} iterations\n\n", currIter);
+
+    return minCost;
+}
+
+
+/// @brief Genetic algorithm solving TSP.
+/// 
+/// Algorithm details:
+/// - Crossover procedure: One-point crossover.
+/// - Parents selection: Random specimen from population.
+/// - After each crossover the worst part of population is rejected, so that population size stayes the same
+
+/// @param initialCycle cycle algorithm starts optimization from.
+/// @param iterations number of iterations (generations).
+/// @param maxIterWithoutImprov safety guard preventing from finishing optimization too early.
+/// @param populationSize size of population algorithm operates on (if high, significantly increases computation time).
+/// @param noOfPairs number of pairs of parents (each pair breeds children).
+/// @param mutationProb probability of mutation for each specimen in  population. Should be in range [0.0, 1.0].
+/// @param verticies data of vertices each specimen of population is built upon.
+/// @param mt random numbers generator.
+/// @return Minimal cost of cycle.
+int geneticTSPSolver(
+    std::vector<int>& initialCycle, const int iterations, const int maxIterWithoutImprov,
+    const int populationSize, const int noOfPairs, const float mutationProb,
+    const std::vector<Vertex>& verticies, std::mt19937& mt)
+{
+
+    if (noOfPairs <= 0 || noOfPairs > populationSize / 2)
+    {
+        fmt::print("Wrong noOfPairs [{}] specified! Population size: {}\n", noOfPairs, populationSize);
+        return -1;
+    }
+    
+
+    std::vector<std::vector<int>> population {createPopulation(initialCycle, populationSize, mt)};
+    std::vector<std::vector<int>> setOfParents {};
+    setOfParents.reserve(noOfPairs * 2);
+
+    int minCost {std::numeric_limits<int>::max()};
+    int currIter {0};
+    int currIterWithoutImprov {0};
+    int currMinCost {evaluatePopulation(population, verticies)};
+    fmt::print("Evaluating initial population...\nCost: {}\n\n", currMinCost);
+
+
+    while (currIter < iterations && currIterWithoutImprov < maxIterWithoutImprov)
+    {
+        minCost = currMinCost;
+
+        setOfParents = chooseParents(population, noOfPairs, mt);
+
         onePointCrossover(population, setOfParents, verticies, mt);
 
         mutatePopulation(population, mutationProb, mt);
@@ -836,6 +940,7 @@ int geneticTSPSolver(
 
     return minCost;
 }
+
 
 int main() {
     //path to files containing verticies data in format (vertex no., x coor, y coor)
@@ -862,20 +967,21 @@ int main() {
                 cycle.push_back(i);
             }
 
+            constexpr int iter {20000};
+            constexpr int maxIterWithoutImprov {1000};
+            constexpr int populationSize {50};
+            constexpr int noOfPairs {20};
+            constexpr float mutationProb {.15};
+            constexpr int populationSample {10};
+            constexpr int  repeats {1};
             int minCost {std::numeric_limits<int>::max()};
             int avgCost {};
-            int repeats {1};
+
             for (int i {0}; i < repeats; ++i)
             {
-                const int iter {20000};
-                const int populationSize {20};
-                const int noOfPairs {5};
-                const int populationSample {10};
-                const float mutationProb {.15};
-                const int maxIterWithoutImprov {1000};
 
-                int currMinCost {geneticTSPSolver(cycle, iter, maxIterWithoutImprov, populationSize, noOfPairs, populationSample, mutationProb, verticies, mt)};
-
+                // int currMinCost {geneticTSPSolver(cycle, iter, maxIterWithoutImprov, populationSize, noOfPairs, populationSample, mutationProb, verticies, mt)};
+                int currMinCost {geneticTSPSolver(cycle, iter, maxIterWithoutImprov, populationSize, noOfPairs, mutationProb, verticies, mt)};
                 if (currMinCost < minCost)
                 {
                     minCost = currMinCost;
