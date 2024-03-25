@@ -48,7 +48,7 @@ int calculateCycle(const std::vector<Vertex>& vertices, const std::vector<int>& 
 /// @return weight of cycle
 int calculatePermutationCycle(const std::vector<Vertex>& permutation);
 
-// TODO vertices - const
+
 /// @brief Permutates provided vertices using random generators
 /// @param vertices vector of Vertex objects based on which permutation will be done
 /// @param mt random generator
@@ -80,7 +80,7 @@ struct InvertWeightDiff
 /// @param startIdx 
 /// @param stopIdx 
 /// @return 
-InvertWeightDiff weightDiff(const std::vector<Vertex> &vertices, std::vector<int>& cycle, int startIdx, int stopIdx);
+InvertWeightDiff weightDiff(const std::vector<Vertex> &vertices, const std::vector<int>& cycle, int startIdx, int stopIdx);
 
 
 struct Timer
@@ -95,7 +95,6 @@ struct Timer
     {
         end = std::chrono::high_resolution_clock::now();
         std::cout << "[" << this->name << "]" <<  " Timer ended!\n";
-        //changed to double
         std::cout << "Elapsed time: " << std::chrono::duration<double, std::milli>(end - start).count() << " ms" << std::endl;
     }
 

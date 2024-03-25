@@ -175,8 +175,16 @@ void invert(std::vector<int>& cycle, int i, int j)
 }
 
 
-InvertWeightDiff weightDiff(const std::vector<Vertex> &vertices, std::vector<int>& cycle, int startIdx, int stopIdx)
+InvertWeightDiff weightDiff(const std::vector<Vertex> &vertices, const std::vector<int>& cycle, int startIdx, int stopIdx)
 {
+
+    if (startIdx > stopIdx)
+    {
+        int temp {startIdx};
+        startIdx = stopIdx;
+        stopIdx = temp;
+    }
+
     //no change at all
     if (startIdx == 0 && stopIdx == vertices.size() - 1)
     {
