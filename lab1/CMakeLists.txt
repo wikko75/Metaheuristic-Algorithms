@@ -1,13 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
-project(Lab1 VERSION 0.1.0 LANGUAGES C CXX)
+project(Lab1 VERSION 0.1.0 LANGUAGES CXX)
 
 include(CTest)
 enable_testing()
 
-add_executable(${PROJECT_NAME} src/main.cpp)
+file(GLOB GRAPH_SRC "../Graph/src/*.cpp")
+file(GLOB UTILS_SRC "../Utils/src/*.cpp")
+
+add_executable(${PROJECT_NAME} ${UTILS_SRC} ${GRAPH_SRC} src/main.cpp)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
-
-
-set(CPACK_PROJECT_NAME ${PROJECT_NAME})
-set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
-include(CPack)
+target_include_directories(${PROJECT_NAME} PRIVATE  ../Utils/inc ../Graph/inc )
