@@ -20,6 +20,7 @@ Data for computation is taken from  [this](https://www.math.uwaterloo.ca/tsp/vls
 - [CMake](https://cmake.org/)
 - C++ 20
 - Python
+- fmt
 
 ----
 
