@@ -4,28 +4,6 @@
 #include "utilsFunc.hpp"
 
 
-struct Timer
-{
-
-    Timer(const std::string& name)
-    {   
-        this->name = name;
-        start = std::chrono::high_resolution_clock::now();
-        std::cout << "["<< this->name  << "] " << "Timer started!\n";
-    }
-
-    ~Timer()
-    {
-        end = std::chrono::high_resolution_clock::now();
-        std::cout << "[" << this->name << "]" <<  "ended!\n";
-        std::cout << "Elapsed time: " << std::chrono::duration<float, std::milli>(end - start).count() << std::endl;
-    }
-
-private:
-    std::chrono::_V2::system_clock::time_point start;
-    std::chrono::_V2::system_clock::time_point end;
-    std::string name;
-};
 
 
 
@@ -41,7 +19,7 @@ int test(std::vector<Vertex>& vertices, std::mt19937& mt, std::uniform_int_distr
         group.reserve(noOfGroups);
         for (int j {0}; j < noOfGroups; ++j)
         {
-            std::vector<Vertex> permutation = verticesPermutation(vertices, mt, randomVertex);
+            std::vector<Vertex> permutation = permutateVertices(vertices, mt, randomVertex);
             int permutationCycleWeight = calculatePermutationCycle(permutation);
             group.emplace_back(permutationCycleWeight);
         }
@@ -113,7 +91,7 @@ int main()
         // -------------------------------
         std::string pathToDFSCycleEdges {std::filesystem::current_path() / "res" / "DFSCycleEdges/"};
         pathToDFSCycleEdges.append(verticesDataFile.path().filename().string());
-        saveDFSCycle(pathToDFSCycleEdges, cycle);
+        saveCycle(pathToDFSCycleEdges, cycle);
 
 
         // TESTS
