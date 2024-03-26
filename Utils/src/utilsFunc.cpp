@@ -3,6 +3,7 @@
 #include <cmath>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
 #include "Graph.hpp"
 
 
@@ -86,30 +87,29 @@ void saveMST(const std::string& path, const Graph& graph)
 }
 
 
-void saveDFSCycle(const std::string& path, const std::vector<int>& cycle)
+void saveCycle(const std::string& path, const std::vector<int>& cycle)
 {
     std::ofstream fstream {};
 
     fstream.open(path, std::ios::out);
 
-    std::cout << "Path to DFS edges: " <<  path << "\n";
+    std::cout << "Path to file: " <<  path << "\n";
 
     if(!fstream.is_open())
     {
-        std::cerr << "Can't write DFS cycle edges\nAborting...\n";
+        std::cerr << "Can't write cycle edges\nAborting...\n";
         fstream.close();
         return;
     }
-
-    std::cout << "Saving DFS edges...\n";
+    
+    std::cout << "Saving edges...\n";
     for(int i {0}; i < cycle.size() - 1; ++i)
-    {
-        
+    {     
         fstream << cycle[i] << " " << cycle[i + 1] << "\n";   
-        
     }
 
     fstream << cycle[cycle.size() - 1] << " " << cycle[0] << "\n";
+
 
     fstream.close();
 }
@@ -149,7 +149,7 @@ int calculatePermutationCycle(const std::vector<Vertex>& permutation)
 }
 
 
-std::vector<Vertex> verticesPermutation(std::vector<Vertex>& vertices, std::mt19937& mt, std::uniform_int_distribution<int>& randomVertex) {
+std::vector<Vertex> permutateVertices(const std::vector<Vertex>& vertices, std::mt19937& mt, std::uniform_int_distribution<int>& randomVertex) {
     std::vector<Vertex> permutation = vertices;  // Creating a copy to generate permutations
 
     // Use a different seed for better randomness
@@ -164,4 +164,68 @@ std::vector<Vertex> verticesPermutation(std::vector<Vertex>& vertices, std::mt19
     }
 
     return permutation;
+}
+
+
+void invert(std::vector<int>& cycle, int i, int j)
+{
+    i <= j ? std::reverse(cycle.begin() + i, cycle.begin() + j + 1)
+           : std::reverse(cycle.begin() + j, cycle.begin() + i + 1);
+
+}
+
+
+InvertWeightDiff weightDiff(const std::vector<Vertex> &vertices, const std::vector<int>& cycle, int startIdx, int stopIdx)
+{
+
+    if (startIdx > stopIdx)
+    {
+        int temp {startIdx};
+        startIdx = stopIdx;
+        stopIdx = temp;
+    }
+
+    //no change at all
+    if (startIdx == 0 && stopIdx == vertices.size() - 1)
+    {
+        return { 0, startIdx, stopIdx };
+    }
+
+    //edges: [start --- (stop+1)] and [stop --- lastVertex] are changed
+    if (startIdx == 0)
+    { 
+        //add weight between [start --- lastVertex] and [stop --- (stop + 1)]  (initial state)
+        int initialCycle = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[cycle.size() - 1] - 1])
+                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[stopIdx + 1] - 1]);
+
+        //add weight between [start --- (stop + 1)] and [stop --- lastVertex]   (state after inversion)
+        int newCycleChange = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[stopIdx + 1] - 1])
+                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[cycle.size() - 1] - 1]);
+        
+        return { initialCycle - newCycleChange, startIdx, stopIdx };
+    }
+
+    //edges: [(start - 1) --- start] and [stop --- firstVertex] are changed
+    if(stopIdx == vertices.size() - 1)
+    {
+         //add weight between [(start - 1) --- start] and [stop --- firstVertex]  (initial state)
+        int initialCycle = euclideanNorm(vertices[cycle[startIdx - 1] - 1], vertices[cycle[startIdx] - 1])
+                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[0] - 1]);
+
+        //add weight between [start --- firstVertex] and [stop --- (start - 1)]   (state after inversion)
+        int newCycleChange = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[0] - 1])
+                            +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[startIdx - 1] - 1]);
+        
+        return { initialCycle - newCycleChange, startIdx, stopIdx };
+    }
+
+    //add weight between [(start - 1) --- start]  and [stop --- (stop + 1)]  (initial state)
+    int initialCycle = euclideanNorm(vertices[cycle[startIdx - 1] - 1], vertices[cycle[startIdx] - 1])
+                        +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[stopIdx + 1] - 1]);
+
+    //add weight between [(start) --- (stop + 1)] and [stop --- (start - 1)]   (state after inversion)
+    int newCycleChange = euclideanNorm(vertices[cycle[startIdx] - 1], vertices[cycle[stopIdx + 1] - 1])
+                        +   euclideanNorm(vertices[cycle[stopIdx] - 1], vertices[cycle[startIdx - 1] - 1]);    
+
+    return { initialCycle - newCycleChange, startIdx, stopIdx };
 }
