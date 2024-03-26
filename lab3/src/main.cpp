@@ -40,7 +40,7 @@ int main() {
             
             //------ SIMULATED ANNEALING -----//
 
-            ExperimentData SAData  { simulatedAnnealingExperiment(vertices, cycle, 1, mt) };
+            const ExperimentData SAData  { simulatedAnnealingExperiment(vertices, cycle, 1, mt) };
            
 
             std::filesystem::path path { std::filesystem::current_path() / "res" / "SimulatedAnnealingData/" };
@@ -55,7 +55,7 @@ int main() {
 
             //--------TABU SEARCH--------//
 
-            ExperimentData TSData { tabuSearchExperiment(vertices, cycle, 1, mt) };
+            const ExperimentData TSData { tabuSearchExperiment(vertices, cycle, 1, mt) };
            
             path = std::filesystem::current_path() / "res" / "TabuSearchData/";
             path.append("TS_DATA_" + verticesDataFile.path().filename().string());
