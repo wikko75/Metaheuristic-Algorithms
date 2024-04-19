@@ -20,7 +20,7 @@ Data for computation is taken from  [this](https://www.math.uwaterloo.ca/tsp/vls
 - [CMake](https://cmake.org/)
 - C++ 20
 - Python
-- fmt
+- [fmt](https://github.com/fmtlib/fmt)
 
 ----
 
@@ -41,12 +41,16 @@ cmake -S . -B build && cmake --build build
 
 ---
 
-Each lab (besides lab4) includes a  **Python** script generating a graphical representation of a solution.
+## Additional Notes ##
 
+- Raports:
+    - [Laboratory 4 and Summary](lab4_raport.pdf)
 
-Sample:
-<div align="center">
-  <img src="DFS_cycle_plot_djc1785.png" alt="image">
-  <br><br>
-  <img src="Local_Search_cycle_plot_djc1785.png" alt="image">
-</div>
+- Each lab, besides lab4, includes a  **Python** script generating a graphical representation of a solution.
+
+  Sample:
+  <div align="center">
+    <img src="DFS_cycle_plot_djc1785.png" alt="image">
+    <br><br>
+    <img src="Local_Search_cycle_plot_djc1785.png" alt="image">
+  </div>
